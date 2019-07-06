@@ -42,7 +42,19 @@ struct client_ctx {
 	struct wl_event_source *timer_ev;
 } g_ctx;
 
-void
+static void
+unimplemented(void *data,
+	struct wl_surface *wl_surface,
+	struct wl_output *output)
+{
+}
+
+struct wl_surface_listener wl_surf_listener = {
+	.enter = unimplemented,
+	.leave = unimplemented
+};
+
+static void
 toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 	int32_t width, int32_t height, struct wl_array *states)
 {
@@ -69,14 +81,14 @@ toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 	wl_surface_commit(ctx->surf);
 }
 
-void
+static void
 toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel)
 {
 	debug("close request!!");
 	exit(1);
 }
 
-void
+static void
 xdgsurf_configure(void *data, struct xdg_surface *xdg_surface,
 	uint32_t serial)
 {
@@ -206,6 +218,7 @@ main(int argc, const char *argv[])
 	g_ctx.xdgsurf = xdg_wm_base_get_xdg_surface(g_ctx.shell, g_ctx.surf);
 	g_ctx.toplevel = xdg_surface_get_toplevel(g_ctx.xdgsurf);
 
+	wl_surface_add_listener(g_ctx.surf, &wl_surf_listener, &g_ctx);
 	xdg_surface_add_listener(g_ctx.xdgsurf, &xdgsurf_listener, &g_ctx);
 	xdg_toplevel_add_listener(g_ctx.toplevel, &toplevel_listener, &g_ctx);
 	wl_display_roundtrip(display);

@@ -197,7 +197,8 @@ window_init(struct amcs_surface *mysurf)
 	c = amcs_get_client(mysurf->res);
 	assert(c && "can't locate client");
 
-	wl_surface_send_enter(mysurf->res, c->output);
+	//TODO: uncomment me after wl_output implementation
+	//wl_surface_send_enter(mysurf->res, c->output);
 }
 
 static void
