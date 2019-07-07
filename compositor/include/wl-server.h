@@ -9,6 +9,10 @@ struct amcs_client {
 	struct wl_resource *output;
 	struct wl_resource *seat;
 
+	// seat resources
+	struct wl_resource *keyboard;
+	struct wl_resource *pointer;
+
 	struct wl_list link;
 };
 
@@ -37,17 +41,22 @@ struct amcs_surface {
 	struct wl_list link;
 };
 
-struct amcs_compositor {
+struct global_resources {
 	struct wl_global *comp;
 	struct wl_global *shell;
 	struct wl_global *seat;
 	struct wl_global *devman;
 	struct wl_global *output;
+};
+
+struct amcs_compositor {
+	struct global_resources g;
 
 	struct wl_display *display;
 	struct wl_event_loop *evloop;
 
 	struct renderer *renderer;
+	struct seat *seat;
 	//struct drmdev dev;
 
 	struct wl_list clients;

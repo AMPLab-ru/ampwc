@@ -290,8 +290,8 @@ int
 xdg_shell_init(struct amcs_compositor *ctx)
 {
 	debug("shm iface version %d", xdg_wm_base_interface.version);
-	ctx->shell = wl_global_create(ctx->display, &xdg_wm_base_interface, 1, ctx, &bind_shell);
-	if (!ctx->shell) {
+	ctx->g.shell = wl_global_create(ctx->display, &xdg_wm_base_interface, 1, ctx, &bind_shell);
+	if (!ctx->g.shell) {
 		warning("can't create shell inteface");
 		return 1;
 	}
@@ -302,8 +302,8 @@ xdg_shell_init(struct amcs_compositor *ctx)
 int
 xdg_shell_finalize(struct amcs_compositor *ctx)
 {
-	if (ctx->shell)
-		wl_global_destroy(ctx->shell);
+	if (ctx->g.shell)
+		wl_global_destroy(ctx->g.shell);
 	return 0;
 }
 

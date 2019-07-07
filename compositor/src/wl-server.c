@@ -72,7 +72,7 @@ amcs_surface_free(struct amcs_surface *surf)
 		}
 
 		amcs_win_orphain(surf->aw);
-
+		amcs_win_free(surf->aw);
 	}
 	wl_array_release(&surf->surf_states);
 	free(surf);
@@ -110,9 +110,9 @@ delete_surface(struct wl_resource *resource)
 	assert(mysurf);
 
 	//TODO: refcount for multiple used surfaces?
-	if (!mysurf->res) {
+	if (!mysurf->res)
 		return;
-	}
+
 	wl_list_remove(&mysurf->link);
 
 	amcs_surface_free(mysurf);
@@ -500,8 +500,8 @@ bind_devman(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 static int
 device_manager_init(struct amcs_compositor *ctx)
 {
-	ctx->devman = wl_global_create(ctx->display, &wl_data_device_manager_interface, 3, ctx, &bind_devman);
-	if (!ctx->devman) {
+	ctx->g.devman = wl_global_create(ctx->display, &wl_data_device_manager_interface, 3, ctx, &bind_devman);
+	if (!ctx->g.devman) {
 		warning("can't create shell inteface");
 		return 1;
 	}
@@ -545,8 +545,8 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 static int
 output_init(struct amcs_compositor *ctx)
 {
-	ctx->output = wl_global_create(ctx->display, &wl_output_interface, 3, ctx, &bind_output);
-	if (!ctx->output) {
+	ctx->g.output = wl_global_create(ctx->display, &wl_output_interface, 3, ctx, &bind_output);
+	if (!ctx->g.output) {
 		warning("can't create output interface");
 		return 1;
 	}
@@ -591,8 +591,8 @@ amcs_compositor_init(struct amcs_compositor *ctx)
 
 	debug("compositor iface version %d", wl_compositor_interface.version);
 	// compositor stuff
-	ctx->comp = wl_global_create(ctx->display, &wl_compositor_interface, 3, ctx, &bind_compositor);
-	if (!ctx->comp) {
+	ctx->g.comp = wl_global_create(ctx->display, &wl_compositor_interface, 3, ctx, &bind_compositor);
+	if (!ctx->g.comp) {
 		warning("can't use compositor");
 		goto finalize;
 	}
@@ -624,8 +624,8 @@ amcs_compositor_deinit(struct amcs_compositor *ctx)
 {
 	if (ctx->display)
 		wl_display_destroy(ctx->display);
-	if (ctx->comp)
-		wl_global_destroy(ctx->comp);
+	if (ctx->g.comp)
+		wl_global_destroy(ctx->g.comp);
 	xdg_shell_finalize(ctx);
 	seat_finalize(ctx);
 }
@@ -641,7 +641,6 @@ amcs_get_client(struct wl_resource *res)
 
 	c = wl_resource_get_client(res);
 	debug("==== resource %p client %p", res, c);
-	
 	if (c == NULL)
 		return NULL;
 
