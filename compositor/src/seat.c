@@ -121,17 +121,19 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 		warning("unknown key state %d", state);
 		return 1;
 	}
-	struct amcs_win *w;
+	struct amcs_workspace *ws;
 	struct amcs_surface *surf;
 	struct wl_array arr;
 
-	if (pvector_len(&ctx->cur_wins) == 0)
+	ws = pvector_get(&compositor_ctx.workspaces,
+			compositor_ctx.cur_workspace);
+	if (ws == NULL || ws->current == NULL)
 		return 1;
-	w = pvector_get(&ctx->cur_wins, 0);
+
 	serial = wl_display_next_serial(ctx->display);
-	if (w != NULL && w->opaq != NULL) {
+	if (ws->current != NULL && ws->current->opaq != NULL) {
 		debug("send enter");
-		surf = w->opaq;	//TODO, rewrite with getter?
+		surf = ws->current->opaq;	//TODO, rewrite with getter?
 		assert(surf && "can't get amcs_surface from amcs_win");
 
 		wl_array_init(&arr);

@@ -19,13 +19,15 @@ destroy(struct wl_client *client, struct wl_resource *resource)
 }
 
 static void
-xsurf_set_parent(struct wl_client *client, struct wl_resource *resource, struct wl_resource *parent_resource)
+xsurf_set_parent(struct wl_client *client, struct wl_resource *resource,
+	struct wl_resource *parent_resource)
 {
 	warning("");
 }
 
 static void
-xsurf_set_title(struct wl_client *client, struct wl_resource *resource, const char *title)
+xsurf_set_title(struct wl_client *client, struct wl_resource *resource,
+	const char *title)
 {
 	struct amcs_surface *mysurf;
 
@@ -36,7 +38,8 @@ xsurf_set_title(struct wl_client *client, struct wl_resource *resource, const ch
 }
 
 static void
-xsurf_set_app_id(struct wl_client *client, struct wl_resource *resource, const char *app_id)
+xsurf_set_app_id(struct wl_client *client, struct wl_resource *resource,
+	const char *app_id)
 {
 	struct amcs_surface *mysurf;
 
@@ -47,31 +50,36 @@ xsurf_set_app_id(struct wl_client *client, struct wl_resource *resource, const c
 }
 
 static void
-xsurf_show_window_menu(struct wl_client *client, struct wl_resource *resource, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y)
+xsurf_show_window_menu(struct wl_client *client, struct wl_resource *resource,
+	struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y)
 {
 	warning("");
 }
 
 static void
-xsurf_move(struct wl_client *client, struct wl_resource *resource, struct wl_resource *seat, uint32_t serial)
+xsurf_move(struct wl_client *client, struct wl_resource *resource,
+	struct wl_resource *seat, uint32_t serial)
 {
 	warning("");
 }
 
 static void
-xsurf_resize(struct wl_client *client, struct wl_resource *resource, struct wl_resource *seat, uint32_t serial, uint32_t edges)
+xsurf_resize(struct wl_client *client, struct wl_resource *resource,
+	struct wl_resource *seat, uint32_t serial, uint32_t edges)
 {
 	warning("");
 }
 
 static void
-xsurf_set_max_size(struct wl_client *client, struct wl_resource *resource, int32_t width, int32_t height)
+xsurf_set_max_size(struct wl_client *client, struct wl_resource *resource,
+	int32_t width, int32_t height)
 {
 	warning("");
 }
 
 static void
-xsurf_set_min_size(struct wl_client *client, struct wl_resource *resource, int32_t width, int32_t height)
+xsurf_set_min_size(struct wl_client *client, struct wl_resource *resource,
+	int32_t width, int32_t height)
 {
 	warning("");
 }
@@ -89,7 +97,8 @@ xsurf_unset_maximized(struct wl_client *client, struct wl_resource *resource)
 }
 
 static void
-xsurf_set_fullscreen(struct wl_client *client, struct wl_resource *resource, struct wl_resource *output)
+xsurf_set_fullscreen(struct wl_client *client, struct wl_resource *resource,
+	struct wl_resource *output)
 {
 	warning("");
 }
@@ -160,7 +169,7 @@ static void
 window_init(struct amcs_surface *mysurf)
 {
 	struct amcs_client *c;
-	struct amcs_win *old;
+	struct amcs_workspace *ws;
 	uint32_t serial;
 	uint32_t *newst;
 
@@ -173,23 +182,14 @@ window_init(struct amcs_surface *mysurf)
 	newst = wl_array_add(&mysurf->surf_states, sizeof(*newst));
 	*newst = XDG_TOPLEVEL_STATE_ACTIVATED;
 
-	//TODO: choose screen
-	int nroot;
-	nroot = 0;
-	old = pvector_get(&compositor_ctx.cur_wins, nroot);
-	if (old == NULL) {
-		struct amcs_container *wt;
-		wt = pvector_get(&compositor_ctx.screen_roots, nroot);
-		mysurf->aw = amcs_win_new(wt, mysurf, window_update_cb);
-	} else {
-		mysurf->aw = amcs_win_new(old->parent, mysurf, window_update_cb);
-	}
-	pvector_set(&compositor_ctx.cur_wins, nroot, mysurf->aw);
-
+	ws = pvector_get(&compositor_ctx.workspaces,
+			compositor_ctx.cur_workspace);
+	mysurf->aw = amcs_workspace_new_win(ws, mysurf, window_update_cb);
 	mysurf->w = mysurf->aw->w;
 	mysurf->h = mysurf->aw->h;
 
-	xdg_toplevel_send_configure(mysurf->xdgtopres, mysurf->w, mysurf->h, &mysurf->surf_states);
+	xdg_toplevel_send_configure(mysurf->xdgtopres, mysurf->w, mysurf->h,
+			&mysurf->surf_states);
 
 	xdg_surface_send_configure(mysurf->xdgres, serial);
 	seat_focus(mysurf->xdgres);
@@ -209,8 +209,10 @@ surf_get_toplevel(struct wl_client *client,
 	mysurf = wl_resource_get_user_data(resource);
 
 	debug("mysurf %p", mysurf);
-	RESOURCE_CREATE(mysurf->xdgtopres, client,  &xdg_toplevel_interface, wl_resource_get_version(resource), id);
-	wl_resource_set_implementation(mysurf->xdgtopres, &toplevel_interface, mysurf, NULL);
+	RESOURCE_CREATE(mysurf->xdgtopres, client,  &xdg_toplevel_interface,
+			wl_resource_get_version(resource), id);
+	wl_resource_set_implementation(mysurf->xdgtopres, &toplevel_interface,
+			mysurf, NULL);
 
 	window_init(mysurf);
 }
@@ -257,12 +259,15 @@ wmbase_get_xdg_surface(struct wl_client *client, struct wl_resource *resource,
 
 	mysurf = wl_resource_get_user_data(surface);
 
-	mysurf->xdgres = wl_resource_create(client, &xdg_surface_interface, wl_resource_get_version(resource), id);
-	wl_resource_set_implementation(mysurf->xdgres, &surface_interface, mysurf, NULL);
+	mysurf->xdgres = wl_resource_create(client, &xdg_surface_interface,
+			wl_resource_get_version(resource), id);
+	wl_resource_set_implementation(mysurf->xdgres, &surface_interface,
+			mysurf, NULL);
 }
 
 static void
-wmbase_pong(struct wl_client *client, struct wl_resource *resource, uint32_t serial)
+wmbase_pong(struct wl_client *client, struct wl_resource *resource,
+	uint32_t serial)
 {
 	debug("serial = %x", serial);
 }
@@ -290,7 +295,8 @@ int
 xdg_shell_init(struct amcs_compositor *ctx)
 {
 	debug("shm iface version %d", xdg_wm_base_interface.version);
-	ctx->g.shell = wl_global_create(ctx->display, &xdg_wm_base_interface, 1, ctx, &bind_shell);
+	ctx->g.shell = wl_global_create(ctx->display, &xdg_wm_base_interface, 1,
+			ctx, &bind_shell);
 	if (!ctx->g.shell) {
 		warning("can't create shell inteface");
 		return 1;
@@ -304,6 +310,7 @@ xdg_shell_finalize(struct amcs_compositor *ctx)
 {
 	if (ctx->g.shell)
 		wl_global_destroy(ctx->g.shell);
+	ctx->g.shell = NULL;
 	return 0;
 }
 

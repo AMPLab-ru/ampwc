@@ -31,7 +31,8 @@ vector_free(vector *v)
 {
 	assert(v);
 
-	v->realloc(v->data, 0);
+	if (v->data && v->realloc)
+		v->realloc(v->data, 0);
 }
 
 void

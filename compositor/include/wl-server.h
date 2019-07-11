@@ -4,6 +4,8 @@
 #include "window.h"
 #include "vector.h"
 
+#define NWORKSPACES 9
+
 struct amcs_client {
 	struct wl_client *client;
 	struct wl_resource *output;
@@ -51,6 +53,7 @@ struct global_resources {
 
 struct amcs_compositor {
 	struct global_resources g;
+	bool isactive;
 
 	struct wl_display *display;
 	struct wl_event_loop *evloop;
@@ -62,10 +65,9 @@ struct amcs_compositor {
 	struct wl_list clients;
 	struct wl_list surfaces;
 
-	//
-	pvector screens;	// struct amcs_screen *
-	pvector screen_roots;	// struct amcs_wtree *
-	pvector cur_wins;	//struct amcs_win *
+	pvector workspaces;		//struct amcs_workspace *
+	struct amcs_output *output;
+	int cur_workspace;
 
 	struct wl_listener redraw_listener;
 	struct wl_signal redraw_sig;

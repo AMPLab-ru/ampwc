@@ -1,11 +1,38 @@
+#include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
+#include <wayland-util.h>
+#include <wayland-server.h>
 
 #include "drm.h"
 #include "macro.h"
-#include "udev.h"
+#include "output.h"
 #include "window.h"
+
+#define DEFAULT_WINSZ 1024
+
+struct amcs_container *amcs_container_new(struct amcs_container *par, enum container_type t);
+void amcs_container_free(struct amcs_container *wt);
+
+typedef int (*container_pass_cb)(struct amcs_win *w, void *opaq);
+int amcs_container_pass(struct amcs_container *wt, container_pass_cb cb, void *data);
+
+/*
+ * Insert window into specified position
+ * Thrid argument may be -1, for appending at the end of *wt*
+ */
+int amcs_container_insert(struct amcs_container *wt, struct amcs_win *w, int pos);
+int amcs_container_remove(struct amcs_container *wt, struct amcs_win *w);
+void amcs_container_remove_all(struct amcs_container *wt);
+int amcs_container_remove_idx(struct amcs_container *wt, int pos);
+int amcs_container_pos(struct amcs_container *wt, struct amcs_win *w);
+int amcs_container_resize_subwins(struct amcs_container *wt);
+
+// create new window, associate with window another object (*opaq*)
+struct amcs_win *amcs_win_new(struct amcs_container *par, void *opaq,
+		win_update_cb upd);
+void amcs_win_free(struct amcs_win *w);
 
 static struct amcs_container *
 win_get_root(struct amcs_win *w)
@@ -18,66 +45,124 @@ win_get_root(struct amcs_win *w)
 	return wt;
 }
 
-static void
-update_screen_state(const char *name, int status)
+static inline struct amcs_workspace *
+win_get_workspace(struct amcs_win *w)
 {
-	if (status)
-		debug("EVENT: %s: connected", name);
-	else
-		debug("EVENT: %s: disconnected", name);
+	struct amcs_container *r;
+	r = win_get_root(w);
+	assert(r && r->ws && "can't get workspace from container");
+	return r->ws;
+}
+
+/* search nearby amcs_win recursively */
+static struct amcs_win *
+win_get_neighbour_win(struct amcs_win *w)
+{
+	int pos, len;
+
+	if (w->parent == NULL)
+		return NULL;
+	do {
+		len = pvector_len(&w->parent->subwins);
+		if (len > 1) {
+			struct amcs_win *next;
+			pos = amcs_container_pos(w->parent, w);
+			if (pos >= len - 1)
+				next = pvector_get(&w->parent->subwins, pos - 1);
+			else
+				next = pvector_get(&w->parent->subwins, pos + 1);
+			if (next->type == WT_WIN) {
+				return next;
+			} else if (next->type == WT_TREE) {
+				struct amcs_container *c;
+				c = AMCS_CONTAINER(next);
+				assert(pvector_len(&c->subwins) > 0 && "get_neighbour error, should not happen");
+				return pvector_get(&c->subwins, 0);
+			} else {
+				error(3, "should not reach");
+			}
+		}
+		w = AMCS_WIN(w->parent);
+	} while (w != NULL && w->parent != NULL);
+	return NULL;
 }
 
 // Public functions
 
-int
-amcs_screens_add(pvector *amcs_screens, const char *path)
+struct amcs_workspace *
+amcs_workspace_new(const char *nm)
 {
-	amcs_drm_card *card;
-	amcs_drm_dev_list *dev_list;
-	struct amcs_screen *screen;
+	struct amcs_workspace *res;
 
-	assert(amcs_screens && path);
-
-	amcs_udev_monitor_tracking(update_screen_state);
-
-	if ((card = amcs_drm_init(path)) == NULL) {
-		return 1;
-	}
-
-	dev_list = card->list;
-
-	while (dev_list) {
-		screen = xmalloc(sizeof (*screen));
-		screen->w = dev_list->w;
-		screen->h = dev_list->h;
-		screen->pitch = dev_list->pitch;
-		screen->buf = dev_list->buf;
-		screen->card = card;
-		pvector_push(amcs_screens, screen);
-
-		card = NULL; // set card only for first screen
-
-		dev_list = dev_list->next;
-	}
-	return 0;
+	res = xmalloc(sizeof(*res));
+	memset(res, 0, sizeof(*res));
+	res->type = WT_WORKSPACE;
+	res->x = res->y = 0;
+	res->w = res->h = DEFAULT_WINSZ;
+	res->root = amcs_container_new(NULL, CONTAINER_VSPLIT);
+	res->root->ws = res;
+	res->name = strdup(nm);
+	return res;
 }
 
 void
-amcs_screens_free(pvector *amcs_screens)
+amcs_workspace_free(struct amcs_workspace *res)
 {
-	int i;
-	struct amcs_screen **sarr;
+	//TODO: maybe we need to remove windows?
+	if (res->root)
+		amcs_container_free(res->root);
+	free(res);
+}
 
-	assert(amcs_screens);
-	sarr = pvector_data(amcs_screens);
-	for (i = 0; i < pvector_len(amcs_screens); i++) {
-		if (sarr[i]->card != NULL) {
-			amcs_drm_free(sarr[i]->card);
-		}
-		free(sarr[i]);
+//TODO: multimonitor support
+void
+amcs_workspace_set_output(struct amcs_workspace *ws, struct amcs_output *out)
+{
+	bool needreload = false;
+	assert(ws && ws->type == WT_WORKSPACE && out);
+	if (ws->out != out) {
+		ws->out = out;
+		needreload = true;
 	}
-	for (i = 0; i < pvector_len(amcs_screens); i++)
-		pvector_pop(amcs_screens);
+	if (ws->out == NULL) {
+		ws->x = ws->y = 0;
+		ws->w = ws->h = DEFAULT_WINSZ;
+		return;
+	}
+	if (ws->w != out->w ||
+	    ws->h != out->h) {
+		needreload = true;
+		ws->x = ws->y = 0;
+		ws->w = out->w;
+		ws->h = out->h;
+	}
+
+	debug("ws (%d, %d) out (%d, %d) needreload %d", ws->w, ws->h,
+			out->w, out->h, needreload);
+
+	if (needreload) {
+		ws->root->x = ws->x;
+		ws->root->y = ws->y;
+		ws->root->h = ws->h;
+		ws->root->w = ws->w;
+		amcs_container_resize_subwins(ws->root);
+	}
+}
+
+struct amcs_win *
+amcs_workspace_new_win(struct amcs_workspace  *ws, void *opaq,
+		win_update_cb upd)
+{
+	struct amcs_container *r;
+	struct amcs_win *res;
+	if (ws->current)
+		r = ws->current->parent;
+	else
+		r = ws->root;
+	assert(r && "can't get temporary root container");
+	res = amcs_win_new(r, opaq, upd);
+	ws->current = res;
+	return res;
 }
 
 struct amcs_container *
@@ -102,18 +187,6 @@ amcs_container_free(struct amcs_container *wt)
 	assert(wt && wt->type == WT_TREE);
 	amcs_container_remove_all(wt);
 	free(wt);
-}
-
-void
-amcs_container_set_screen(struct amcs_container *wt, struct amcs_screen *screen)
-{
-	assert(wt && wt->type == WT_TREE);
-
-	wt->screen = screen;
-	wt->x = wt->y = 0;
-	wt->w = screen->w;
-	wt->h = screen->h;
-	amcs_container_resize_subwins(wt);
 }
 
 int
@@ -228,7 +301,6 @@ amcs_win_new(struct amcs_container *par, void *opaq, win_update_cb upd)
 	res->upd_cb = upd;
 	if (par)
 		amcs_container_insert(par, res, -1);
-
 	return res;
 }
 
@@ -303,41 +375,32 @@ amcs_container_resize_subwins(struct amcs_container *wt)
 int
 amcs_win_commit(struct amcs_win *win)
 {
-	struct amcs_container *root;
-	struct amcs_screen *screen;
-	int i, j, h, w;
-	size_t offset;
+	struct amcs_workspace *ws;
 
-	root = win_get_root(win);
-	debug("get root %p", root);
-	if (root->screen == NULL)
+	ws = win_get_workspace(win);
+	debug("get workspace %p", ws);
+	if (ws->out == NULL)
 		return -1;
-
-	h = MIN(win->h, win->buf.h);
-	w = MIN(win->w, win->buf.w);
-	screen = root->screen;
-	for (i = 0; i < h; ++i) {
-		for (j = 0; j < w; ++j) {
-			offset = screen->pitch * (i + win->y) + 4*(j + win->x);
-			*(uint32_t*)&screen->buf[offset] = win->buf.dt[win->buf.w * i + j];
-		}
-	}
-
-	return 0;
+	return amcs_output_update_region(ws->out, win);
 }
 
 int
 amcs_win_orphain(struct amcs_win *w)
 {
 	struct amcs_container *par;
+	struct amcs_workspace *ws;
 
 	assert(w);
 	if (w->parent == NULL)
 		return 1;
 	par = w->parent;
+	ws = win_get_workspace(w);
+	if (ws->current == w) {
+		ws->current = win_get_neighbour_win(w);
+	}
 	w->parent = NULL;
-
 	amcs_container_remove(par, w);
+
 	return 0;
 }
 
@@ -351,36 +414,10 @@ _print_cb(struct amcs_win *w, void *opaq)
 }
 
 void
-amcs_container_debug(struct amcs_container *wt)
+amcs_workspace_debug(struct amcs_workspace *ws)
 {
-	if (wt == NULL)
+	if (ws->root == NULL)
 		return;
-	amcs_container_pass(wt, _print_cb, NULL);
+	amcs_container_pass(ws->root, _print_cb, NULL);
 }
-////////
-
-/*
-void
-static void
-commit_buf(amcs_screen *screen, amcs_wind *wind)
-{
-	int i, j;
-	size_t offset;
-
-
-	if (wind->stype != NOSPLIT) {
-		commit_buf(screen, wind->subwind[0]);
-		commit_buf(screen, wind->subwind[1]);
-
-		return;
-	}
-
-	for (i = 0; i < wind->h; ++i) {
-		for (j = 0; j < wind->w; ++j) {
-			offset = screen->pitch * (i + wind->y) + 4*(j + wind->x);
-			*(uint32_t*)&screen->buf[offset] = wind->buf[wind->w * i + j];
-		}
-	}
-}
-*/
 

@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <limits.h>
 
 #include <wayland-server.h>
 #include <wayland-server-core.h>
@@ -12,6 +11,7 @@
 
 #include "common.h"
 #include "macro.h"
+#include "output.h"
 #include "seat.h"
 #include "wl-server.h"
 #include "xdg-shell.h"
@@ -59,21 +59,8 @@ amcs_surface_new()
 void
 amcs_surface_free(struct amcs_surface *surf)
 {
-	struct amcs_compositor *ctx = &compositor_ctx;
-	if (surf->aw) {
-		struct amcs_win *w;
-
-		//TODO: choose screen, choose another window
-		int nroot;
-		nroot = 0;
-		w = pvector_get(&ctx->cur_wins, nroot);
-		if (surf->aw == w) {
-			pvector_set(&ctx->cur_wins, nroot, NULL);
-		}
-
-		amcs_win_orphain(surf->aw);
+	if (surf->aw)
 		amcs_win_free(surf->aw);
-	}
 	wl_array_release(&surf->surf_states);
 	free(surf);
 }
@@ -82,21 +69,11 @@ static void
 sig_surfaces_redraw(struct wl_listener *listener, void *data)
 {
 	struct amcs_compositor *ctx = (struct amcs_compositor *) data;
-	int i;
+	struct amcs_workspace *ws;
 
 	debug("");
-
-	/*
-	struct amcs_surface *surf;
-	wl_list_for_each(surf, &ctx->surfaces, link) {
-		debug("next surface %p", surf);
-	}
-	*/
-	for (i = 0; i < pvector_len(&ctx->screen_roots); i++) {
-		debug("next screen");
-		amcs_container_debug(pvector_get(&ctx->screen_roots, i));
-	}
-
+	ws = pvector_get(&ctx->workspaces, ctx->cur_workspace);
+	amcs_workspace_debug(ws);
 }
 
 static void
@@ -114,7 +91,6 @@ delete_surface(struct wl_resource *resource)
 		return;
 
 	wl_list_remove(&mysurf->link);
-
 	amcs_surface_free(mysurf);
 }
 
@@ -363,75 +339,41 @@ bind_compositor(struct wl_client *client, void *data, uint32_t version, uint32_t
 static void
 start_draw(void)
 {
-	int i;
-	char path[PATH_MAX];
-	const char **cards;
 	struct amcs_compositor *ctx = &compositor_ctx;
-	int nroots, nscreens;
-	struct amcs_screen **sarr;
-	struct amcs_container **rootarr;
+	struct amcs_client *iter;
+	int i, w, h;
 
-	debug("start draw");
-	cards = amcs_udev_get_cardnames();
+	debug("");
 
-	assert(pvector_len(&ctx->screens) == 0);
+	w = ctx->output->w;
+	h = ctx->output->h;
 
-	for (i = 0; cards[i] != NULL; ++i) {
-		snprintf(path, sizeof(path), "%s%s", DRIPATH, cards[i]);
-		amcs_screens_add(&ctx->screens, path);
-	}
+	amcs_output_reload(ctx->output);
+	ctx->isactive = true;
 
-	nscreens = pvector_len(&ctx->screens);
-	if (nscreens == 0)
-		error(1, "screens not found");
-
-	nroots = pvector_len(&ctx->screen_roots);
-	if (nroots < nscreens) {
-		int i;
-		struct amcs_container *wt;
-		sarr = pvector_data(&ctx->screens);
-		//initialize root trees for each unused screen
-		for (i = nroots; i < nscreens; i++) {
-			wt = amcs_container_new(NULL, CONTAINER_VSPLIT);
-			amcs_container_set_screen(wt, sarr[i]);
-			pvector_push(&ctx->screen_roots, wt);
+	if (w != ctx->output->w || h != ctx->output->h) {
+		wl_list_for_each(iter, &ctx->clients, link) {
+			if (iter->output)
+				amcs_output_send_info(ctx->output, iter->output);
 		}
-	} else if (nroots > nscreens) {
-		error(2, "TODO: Writeme!");
+		for (i = 0; i < NWORKSPACES; i++) {
+			struct amcs_workspace *ws;
+			ws = pvector_get(&ctx->workspaces, i);
+			debug("set output %p for workspace %d", ctx->output,
+					i);
+			amcs_workspace_set_output(ws, ctx->output);
+		}
 	}
-
-	nscreens = pvector_len(&ctx->screens);
-	nroots = pvector_len(&ctx->screen_roots);
-	assert(nscreens == nroots);
-
-	sarr = pvector_data(&ctx->screens);
-	rootarr = pvector_data(&ctx->screen_roots);
-	for (i = 0; i < nscreens; i++) {
-		amcs_container_set_screen(rootarr[i], sarr[i]);
-	}
-	pvector_reserve(&ctx->cur_wins, pvector_len(&ctx->screens));
-
-	amcs_udev_free_cardnames(cards);
+	return;
 }
 
 static void
 stop_draw(void)
 {
 	struct amcs_compositor *ctx = &compositor_ctx;
-//	struct amcs_surface *surf;
-	int i;
-
-	debug("stop_draw nscreens %zd", pvector_len(&ctx->screens));
-	if (pvector_len(&ctx->screens) == 0)
-		return;
-
-	amcs_screens_free(&ctx->screens);
-	for (i = 0; i < pvector_len(&ctx->screen_roots); i++) {
-		struct amcs_container *tmp;
-		tmp = pvector_get(&ctx->screen_roots, i);
-		tmp->screen = NULL;
-	}
-	pvector_clear(&ctx->screens);
+	ctx->isactive = false;
+	debug("");
+	amcs_output_release(ctx->output);
 }
 
 static void
@@ -507,56 +449,11 @@ device_manager_init(struct amcs_compositor *ctx)
 	}
 	return 0;
 }
-
-static void
-output_release(struct wl_client *client,
-	struct wl_resource *resource)
-{
-	warning("");
-}
-
-static const struct wl_output_interface output_interface = {
-	.release = output_release,
-};
-
-static void
-bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{
-	struct wl_resource *resource;
-//	struct amcs_compositor *ctx;
-	struct amcs_client *c;
-
-//	ctx = data;
-
-	debug("");
-	RESOURCE_CREATE(resource, client, &wl_output_interface, version, id);
-	wl_resource_set_implementation(resource, &output_interface, data, NULL);
-	//FIXME: temporary shit code
-	wl_output_send_geometry(resource, 0, 0, 1024, 1024, 0,
-			"unknown", "unknown", WL_OUTPUT_TRANSFORM_NORMAL);
-	wl_output_send_mode(resource, 0, 1024, 1024, 60);
-	wl_output_send_scale(resource, 1);
-	wl_output_send_done(resource);
-	c = amcs_get_client(resource);
-	assert(c && "can't locate client");
-	c->output = resource;
-}
-
-static int
-output_init(struct amcs_compositor *ctx)
-{
-	ctx->g.output = wl_global_create(ctx->display, &wl_output_interface, 3, ctx, &bind_output);
-	if (!ctx->g.output) {
-		warning("can't create output interface");
-		return 1;
-	}
-	return 0;
-}
-
 int
 amcs_compositor_init(struct amcs_compositor *ctx)
 {
 	const char *sockpath = NULL;
+	int i;
 
 	memset(ctx, 0, sizeof(*ctx));
 
@@ -609,9 +506,16 @@ amcs_compositor_init(struct amcs_compositor *ctx)
 	ctx->redraw_listener.notify = sig_surfaces_redraw;
 	wl_signal_add(&ctx->redraw_sig, &ctx->redraw_listener);
 
-	pvector_init(&ctx->screens, xrealloc);
-	pvector_init(&ctx->screen_roots, xrealloc);
-	pvector_init(&ctx->cur_wins, xrealloc);
+	pvector_init(&ctx->workspaces, xrealloc);
+	for (i = 0; i < NWORKSPACES; i++) {
+		char wsname[4] = {0};
+		struct amcs_workspace *ws;
+
+		snprintf(wsname, sizeof(wsname), "%d", i);
+		ws = amcs_workspace_new(wsname);
+		amcs_workspace_set_output(ws, ctx->output);
+		pvector_push(&ctx->workspaces, ws);
+	}
 
 	return 0;
 finalize:
@@ -622,12 +526,22 @@ finalize:
 void
 amcs_compositor_deinit(struct amcs_compositor *ctx)
 {
+	int i, len;
+
 	if (ctx->display)
 		wl_display_destroy(ctx->display);
 	if (ctx->g.comp)
 		wl_global_destroy(ctx->g.comp);
 	xdg_shell_finalize(ctx);
 	seat_finalize(ctx);
+	output_finalize(ctx);
+
+	len = pvector_len(&ctx->workspaces);
+	for (i = 0; i < len; i++) {
+		amcs_workspace_free(pvector_get(&ctx->workspaces, i));
+		/* code */
+	}
+	pvector_free(&ctx->workspaces);
 }
 
 struct amcs_client *
@@ -682,7 +596,6 @@ main(int argc, const char *argv[])
 	debug("tty init");
 	amcs_tty_open(0);
 	amcs_tty_sethand(start_draw, stop_draw);
-	amcs_tty_activate();
 
 	sigemptyset(&set);
 	act.sa_handler = term_handler;

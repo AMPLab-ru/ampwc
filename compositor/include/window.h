@@ -2,23 +2,35 @@
 #define _AWC_WINDOWS_H
 
 #include <stdint.h>
-#include "amcs_drm.h"
 
 #include "vector.h"
-
-#define DRIPATH "/dev/dri/"
-
 /*
+ * amcs_workspace -- single compositor workspace with it's own output position
+ *   and window hierarchy
  * amcs_container -- container for child windows / splits.
  * root container has no parent
  */
+struct amcs_workspace;
 struct amcs_win;
 struct amcs_container;
-struct amcs_screen;
 
 enum win_objtype {
 	WT_TREE = 0,
 	WT_WIN = 1,
+	WT_WORKSPACE = 2,
+};
+
+struct amcs_workspace {
+	enum win_objtype type;
+	struct amcs_container *parent;	//unused
+	// offsets for multi monitor systems
+	int w, h;
+	int x, y;
+
+	struct amcs_container *root;
+	struct amcs_win *current;
+	struct amcs_output *out;
+	char *name;
 };
 
 enum container_type {
@@ -35,12 +47,12 @@ struct amcs_container {
 
 	enum container_type wt;
 	pvector subwins; // struct amcs_win *
-
-	struct amcs_screen *screen; // NOTE: Valid only for root wtree
+	struct amcs_workspace *ws; // NOTE: Valid only for root wtree
 };
 
 struct amcs_buf {
 	uint32_t *dt;
+	int format;
 	int h, w;
 	int sz;
 };
@@ -59,55 +71,24 @@ struct amcs_win {
 
 	void *opaq;	//TODO: getter/setter ???
 	win_update_cb upd_cb;
-	void *upd_opaq;
 };
 
-struct amcs_screen {
-	int w, h;
-	int pitch;
-	uint8_t *buf;
-	amcs_drm_card *card;
-};
+/* Workspace */
+struct amcs_workspace *amcs_workspace_new(const char *name);
+void amcs_workspace_free(struct amcs_workspace *w);
+/* Handle resizing, repositioning and output structure changing. */
+void amcs_workspace_set_output(struct amcs_workspace *ws, struct amcs_output *out);
+// ????
+void amcs_workspace_focus(struct amcs_workspace *ws);
+void amcs_workspace_debug(struct amcs_workspace *ws);
 
-typedef int (*container_pass_cb)(struct amcs_win *w, void *opaq);
-
-/* This functions may change amcs_win size. */
-
-struct amcs_container *amcs_container_new(struct amcs_container *par, enum container_type t);
-void amcs_container_free(struct amcs_container *wt);
-
-void amcs_container_set_screen(struct amcs_container *wt, struct amcs_screen *screen);
-int amcs_container_pass(struct amcs_container *wt, container_pass_cb cb, void *data);
-
-// create new window, associate with window another object (*opaq*)
-struct amcs_win *amcs_win_new(struct amcs_container *par, void *opaq,
+struct amcs_win *amcs_workspace_new_win(struct amcs_workspace *ws, void *opaq,
 		win_update_cb upd);
+
+struct amcs_win *amcs_win_new(struct amcs_container *par, void *opaq, win_update_cb upd);
 void amcs_win_free(struct amcs_win *w);
-
-/*
- * Insert window into specified position
- * Thrid argument may be -1, for appending at the end of *wt*
- */
-int amcs_container_insert(struct amcs_container *wt, struct amcs_win *w, int pos);
-int amcs_container_remove(struct amcs_container *wt, struct amcs_win *w);
-void amcs_container_remove_all(struct amcs_container *wt);
-int amcs_container_remove_idx(struct amcs_container *wt, int pos);
-int amcs_container_pos(struct amcs_container *wt, struct amcs_win *w);
-
-//resize childs
-//int amcs_container_update(
-
-/* Common */
-
-int amcs_container_resize_subwins(struct amcs_container *wt);
 int amcs_win_commit(struct amcs_win *w);
+//TODO: change current window, free empty containers (except root)
 int amcs_win_orphain(struct amcs_win *w);
 //int amcs_win_resize(struct amcs_win *w,);
-///
-//
-int amcs_screens_add(pvector *amcs_screens, const char *path);
-void amcs_screens_free(pvector *amcs_screens);
-
-void amcs_container_debug(struct amcs_container *wt);
-//end
 #endif // _AWC_WINDOWS_H

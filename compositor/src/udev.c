@@ -215,7 +215,6 @@ amcs_udev_monitor_tracking(void (*update_status)(const char *name, int status))
 	pthread_t thread;
 	pthread_attr_t attr;
 
-
 	assert(update_status);
 	ext_update_status = update_status;
 

@@ -33,12 +33,11 @@ dumb_is_supported(int fd)
 	return 1;
 }
 
-static void
+static int
 drm_setFB(int fd, amcs_drm_dev *dev)
 {
 	struct drm_mode_create_dumb creq;
 	struct drm_mode_map_dumb mreq;
-
 
 	// get settings, and FB id
 	memset(&creq, 0, sizeof (struct drm_mode_create_dumb));
@@ -46,33 +45,44 @@ drm_setFB(int fd, amcs_drm_dev *dev)
 	creq.height = dev->h;
 	creq.bpp = BPP;
 
-	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq) < 0)
-		error(1, "drmIoctl error");
+	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq) < 0) {
+		warning("drmIoctl error");
+		return 1;
+	}
 
 	dev->pitch = creq.pitch;
 	dev->size = creq.size;
 	dev->handle = creq.handle;
 
 	if (drmModeAddFB(fd, dev->w, dev->h, DEPTH, BPP, dev->pitch,
-			 dev->handle, &dev->fb_id))
-		error(1, "error adding frame buffer");
+			 dev->handle, &dev->fb_id)) {
+		warning("error adding frame buffer");
+		return 1;
+	}
 
 
 	// get settings, and map buffer
 	memset(&mreq, 0, sizeof (struct drm_mode_map_dumb));
 	mreq.handle = dev->handle;
 
-	if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq))
-		error(1, "error getting map dumb");
+	if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq)) {
+		warning("error getting map dumb");
+		return 1;
+	}
 
 	dev->buf = mmap(NULL, dev->size, PROT_READ | PROT_WRITE, MAP_SHARED,
 			fd, mreq.offset);
-	if (dev->buf == MAP_FAILED)
-		error(1, "error mapping buffer");
+	if (dev->buf == MAP_FAILED) {
+		warning("error mapping buffer");
+		return 1;
+	}
 
 	if (drmModeSetCrtc(fd, dev->crtc_id, dev->fb_id, 0, 0,
-			   &dev->conn_id, 1, &dev->mode))
-		error(1, "error setting crtc");
+			   &dev->conn_id, 1, &dev->mode)) {
+		warning("error setting crtc");
+		return 1;
+	}
+	return 0;
 }
 
 amcs_drm_card*
@@ -83,37 +93,32 @@ amcs_drm_init(const char *path)
 
 	amcs_drm_card *card;
 	amcs_drm_dev *dev_list;
+	amcs_drm_dev *dev;
 	amcs_drm_dev *drmdev;
 
 	drmModeRes *res;
 	drmModeConnector *conn;
 	drmModeEncoder *enc;
 
-
 	assert(path);
-
 	debug("Init dev: %s", path);
 
 	if ((fd = open(path, O_RDWR)) < 0) {
 		perror("amcs_drm_init()");
-
 		return NULL;
 	}
 
 	if (!dumb_is_supported(fd)) {
 		debug("dumb buffer is not supported for device: %s", path);
 		close(fd);
-
 		return NULL;
 	}
 
 	if ((res = drmModeGetResources(fd)) == NULL) {
 		debug("error getting drm resources for device: %s", path);
 		close(fd);
-
 		return NULL;
 	}
-
 
 	card = xmalloc(sizeof (amcs_drm_card));
 	card->path = path;
@@ -147,7 +152,12 @@ amcs_drm_init(const char *path)
 		dev_list->w = conn->modes[0].hdisplay;
 		dev_list->h = conn->modes[0].vdisplay;
 
-		drm_setFB(fd, dev_list);
+		if (drm_setFB(fd, dev_list) != 0) {
+			dev_list = drmdev->next;
+			free(drmdev);
+			drmModeFreeEncoder(enc);
+			goto cleanup;
+		}
 
 		debug("    conn id: %d", dev_list->conn_id);
 		debug("    enc id: %d", dev_list->enc_id);
@@ -157,7 +167,6 @@ amcs_drm_init(const char *path)
 		      dev_list->pitch, dev_list->size, dev_list->handle);
 
 		drmModeFreeEncoder(enc);
-
 free_connector:
 		drmModeFreeConnector(conn);
 		debug("    ____________________");
@@ -166,6 +175,18 @@ free_connector:
 	drmModeFreeResources(res);
 
 	return card;
+
+cleanup:
+	drmModeFreeResources(res);
+	for (dev_list = card->list; dev_list != NULL;) {
+		munmap(dev_list->buf, dev_list->size);
+		dev = dev_list;
+		dev_list = dev_list->next;
+		free(dev);
+	}
+	close(card->fd);
+	free(card);
+	return NULL;
 }
 
 void
@@ -174,9 +195,7 @@ amcs_drm_free(amcs_drm_card *card)
 	amcs_drm_dev *dev, *dev_list;
 	struct drm_mode_destroy_dumb dreq;
 
-
 	assert(card);
-
 	for (dev_list = card->list; dev_list != NULL;) {
 		munmap(dev_list->buf, dev_list->size);
 		drmModeRmFB(card->fd, dev_list->fb_id);

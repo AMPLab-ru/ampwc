@@ -110,13 +110,18 @@ static inline void pvector_del(pvector *v, size_t idx)
 static inline void pvector_clear(pvector *v)
 {
 	v->v.nmemb = 0;
-
 }
 
 static inline void pvector_zero(pvector *v)
 {
 	memset(v->v.data, 0, sizeof(void*) * v->v.maxnmemb);
 }
+
+#define pvector_for_each(pos, iterator, vector)			\
+	if (pvector_len(vector) > 0)				\
+		for (pos = 0, iterator = pvector_get(vector, 0);\
+		     pos < pvector_len(vector);			\
+		     pos++, iterator = pvector_get(vector, pos))
 
 #endif
 
