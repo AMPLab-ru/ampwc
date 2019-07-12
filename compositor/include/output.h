@@ -34,6 +34,7 @@ int amcs_output_release(struct amcs_output *out);
 //send updated info to wl_output object
 void amcs_output_send_info(struct amcs_output *out, struct wl_resource *resource);
 int amcs_output_update_region(struct amcs_output *out, struct amcs_win *w);
+void amcs_output_clear(struct amcs_output *out);
 
 struct amcs_compositor;
 int output_init(struct amcs_compositor *ctx);

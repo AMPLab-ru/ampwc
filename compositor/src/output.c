@@ -156,6 +156,18 @@ amcs_output_update_region(struct amcs_output *out, struct amcs_win *win)
 }
 
 void
+amcs_output_clear(struct amcs_output *out)
+{
+	struct amcs_screen *screen;
+
+	assert(out);
+	if (pvector_len(&out->screens) < 1)
+		return;
+
+	screen = pvector_get(&out->screens, 0);
+	memset(screen->buf, 0, screen->pitch * screen->h);
+}
+void
 amcs_output_free(struct amcs_output *out)
 {
 	amcs_output_screens_free(out);

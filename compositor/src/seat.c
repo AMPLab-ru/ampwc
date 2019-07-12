@@ -97,19 +97,19 @@ static int
 process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 {
 	struct libinput_event_keyboard *k;
+	struct amcs_workspace *ws;
+	struct amcs_surface *surf;
+	struct wl_array arr;
 	uint32_t serial, time, key;
 	enum libinput_key_state state;
 	enum wl_keyboard_key_state wlstate;
 
-	debug("focus = %p", compositor_ctx.seat->focus);
-
-	if (compositor_ctx.seat->focus == NULL || compositor_ctx.seat->focus->keyboard == NULL) {
-		warning("can't send keyboard event, no client keyboard connection");
-		return 1;
-	}
+	/* for debugging purposes only
+	if (ctx->isactive == false)
+		return 0;
+	*/
 
 	k = libinput_event_get_keyboard_event(ev);
-
 	time = libinput_event_keyboard_get_time(k);
 	key = libinput_event_keyboard_get_key(k);
 	state = libinput_event_keyboard_get_key_state(k);
@@ -121,9 +121,17 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 		warning("unknown key state %d", state);
 		return 1;
 	}
-	struct amcs_workspace *ws;
-	struct amcs_surface *surf;
-	struct wl_array arr;
+
+	debug("focus = %p", compositor_ctx.seat->focus);
+
+	if (amcs_compositor_handle_key(&compositor_ctx, key, wlstate))
+		return 0;
+
+	if (compositor_ctx.seat->focus == NULL || compositor_ctx.seat->focus->keyboard == NULL) {
+		warning("can't send keyboard event, no client keyboard connection");
+		return 1;
+	}
+
 
 	ws = pvector_get(&compositor_ctx.workspaces,
 			compositor_ctx.cur_workspace);
@@ -133,7 +141,7 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 	serial = wl_display_next_serial(ctx->display);
 	if (ws->current != NULL && ws->current->opaq != NULL) {
 		debug("send enter");
-		surf = ws->current->opaq;	//TODO, rewrite with getter?
+		surf = amcs_win_get_opaq(ws->current);
 		assert(surf && "can't get amcs_surface from amcs_win");
 
 		wl_array_init(&arr);

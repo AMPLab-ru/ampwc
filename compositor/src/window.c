@@ -28,6 +28,7 @@ void amcs_container_remove_all(struct amcs_container *wt);
 int amcs_container_remove_idx(struct amcs_container *wt, int pos);
 int amcs_container_pos(struct amcs_container *wt, struct amcs_win *w);
 int amcs_container_resize_subwins(struct amcs_container *wt);
+int amcs_container_nmemb(struct amcs_container *wt);
 
 // create new window, associate with window another object (*opaq*)
 struct amcs_win *amcs_win_new(struct amcs_container *par, void *opaq,
@@ -145,8 +146,14 @@ amcs_workspace_set_output(struct amcs_workspace *ws, struct amcs_output *out)
 		ws->root->y = ws->y;
 		ws->root->h = ws->h;
 		ws->root->w = ws->w;
-		amcs_container_resize_subwins(ws->root);
 	}
+}
+
+void amcs_workspace_redraw(struct amcs_workspace *ws)
+{
+	assert(ws && ws->root && ws->out);
+	amcs_output_clear(ws->out);
+	amcs_container_resize_subwins(ws->root);
 }
 
 struct amcs_win *
@@ -161,8 +168,36 @@ amcs_workspace_new_win(struct amcs_workspace  *ws, void *opaq,
 		r = ws->root;
 	assert(r && "can't get temporary root container");
 	res = amcs_win_new(r, opaq, upd);
+	amcs_container_resize_subwins(r);
+	debug("===== win %p root %p", res, r);
 	ws->current = res;
 	return res;
+}
+
+int amcs_workspace_split(struct amcs_workspace *ws)
+{
+	struct amcs_container *par, *c;
+	int pos, type;
+
+	if (ws->current == NULL) {
+		ws->root->wt = ws->root->wt == CONTAINER_VSPLIT ?
+			CONTAINER_HSPLIT : CONTAINER_VSPLIT;
+		return 0;
+	}
+	par = ws->current->parent;
+	type = par->wt == CONTAINER_VSPLIT ?
+		CONTAINER_HSPLIT : CONTAINER_VSPLIT;
+	if (amcs_container_nmemb(par) < 2) {
+		par->wt = type;
+		return 0;
+	}
+	c = amcs_container_new(NULL, type);
+	pos = amcs_container_pos(par, ws->current);
+	amcs_container_remove_idx(par, pos);
+	amcs_container_insert(c, ws->current, pos);
+	amcs_container_insert(par, c, 0);
+	amcs_container_resize_subwins(par);
+	return 0;
 }
 
 struct amcs_container *
@@ -177,7 +212,6 @@ amcs_container_new(struct amcs_container *par, enum container_type t)
 	res->parent = par;
 	pvector_init(&res->subwins, xrealloc);
 
-	amcs_container_resize_subwins(par);
 	return res;
 }
 
@@ -221,12 +255,12 @@ amcs_container_pass(struct amcs_container *wt, container_pass_cb cb, void *data)
 int
 amcs_container_insert(struct amcs_container *wt, struct amcs_win *w, int pos)
 {
-	assert(wt && wt->type == WT_TREE && w->type == WT_WIN);
+	assert(wt && (wt->type == WT_TREE || w->type == WT_WIN));
 
 	debug("insert %p, into %p nsubwinds %zd", w, wt, pvector_len(&wt->subwins));
+	warning("TODO: insert into specified positon");
 	pvector_push(&wt->subwins, w);
 	w->parent = wt;
-	amcs_container_resize_subwins(wt);
 	return 0;
 }
 
@@ -370,6 +404,13 @@ amcs_container_resize_subwins(struct amcs_container *wt)
 	}
 	amcs_container_pass(wt, _commit_cb, NULL);
 	return 0;
+}
+
+int
+amcs_container_nmemb(struct amcs_container *wt)
+{
+	assert(wt);
+	return pvector_len(&wt->subwins);
 }
 
 int

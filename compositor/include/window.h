@@ -80,13 +80,21 @@ void amcs_workspace_free(struct amcs_workspace *w);
 void amcs_workspace_set_output(struct amcs_workspace *ws, struct amcs_output *out);
 // ????
 void amcs_workspace_focus(struct amcs_workspace *ws);
+void amcs_workspace_redraw(struct amcs_workspace *ws);
 void amcs_workspace_debug(struct amcs_workspace *ws);
 
 struct amcs_win *amcs_workspace_new_win(struct amcs_workspace *ws, void *opaq,
 		win_update_cb upd);
+int amcs_workspace_split(struct amcs_workspace * ws);
+
 
 struct amcs_win *amcs_win_new(struct amcs_container *par, void *opaq, win_update_cb upd);
 void amcs_win_free(struct amcs_win *w);
+static inline void *amcs_win_get_opaq(struct amcs_win *w)
+{
+	assert(w);
+	return w->opaq;
+}
 int amcs_win_commit(struct amcs_win *w);
 //TODO: change current window, free empty containers (except root)
 int amcs_win_orphain(struct amcs_win *w);

@@ -78,6 +78,9 @@ extern struct amcs_compositor compositor_ctx;
 int   amcs_compositor_init    (struct amcs_compositor *ctx);
 void  amcs_compositor_deinit  (struct amcs_compositor *ctx);
 
+
+bool  amcs_compositor_handle_key(struct amcs_compositor *ctx, int key, int state);
+
 //get amcs_client from any valid child resource
 struct amcs_client *amcs_get_client(struct wl_resource *res);
 

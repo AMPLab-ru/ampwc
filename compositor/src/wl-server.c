@@ -5,6 +5,10 @@
 #include <string.h>
 #include <errno.h>
 
+#include "xdg-shell-server.h"
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <wayland-server.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
@@ -345,11 +349,11 @@ start_draw(void)
 
 	debug("");
 
+	ctx->isactive = true;
 	w = ctx->output->w;
 	h = ctx->output->h;
 
 	amcs_output_reload(ctx->output);
-	ctx->isactive = true;
 
 	if (w != ctx->output->w || h != ctx->output->h) {
 		wl_list_for_each(iter, &ctx->clients, link) {
@@ -364,6 +368,7 @@ start_draw(void)
 			amcs_workspace_set_output(ws, ctx->output);
 		}
 	}
+	amcs_workspace_redraw(pvector_get(&ctx->workspaces, ctx->cur_workspace));
 	return;
 }
 
@@ -511,7 +516,7 @@ amcs_compositor_init(struct amcs_compositor *ctx)
 		char wsname[4] = {0};
 		struct amcs_workspace *ws;
 
-		snprintf(wsname, sizeof(wsname), "%d", i);
+		snprintf(wsname, sizeof(wsname), "%d", i + 1);
 		ws = amcs_workspace_new(wsname);
 		amcs_workspace_set_output(ws, ctx->output);
 		pvector_push(&ctx->workspaces, ws);
@@ -542,6 +547,100 @@ amcs_compositor_deinit(struct amcs_compositor *ctx)
 		/* code */
 	}
 	pvector_free(&ctx->workspaces);
+}
+
+static int
+_spawn_client(struct amcs_compositor *ctx, int key, void *opaq)
+{
+	char *cmd[] = {"./wlclient", NULL};
+	if (fork() == 0) {
+		debug("==@@@@@@==");
+		execvp(cmd[0], cmd);
+		perror("execvp");
+		exit(1);
+	}
+	return 0;
+}
+
+static int
+_kill_client(struct amcs_compositor *ctx, int key, void *opaq)
+{
+	struct amcs_workspace *w;
+	struct amcs_surface *surf;
+
+	w = pvector_get(&ctx->workspaces, ctx->cur_workspace);
+	if (w == NULL || w->current == NULL)
+		return 1;
+
+	surf = amcs_win_get_opaq(w->current);
+	if (surf->xdgtopres) {
+		xdg_toplevel_send_close(surf->xdgtopres);
+		wl_resource_destroy(surf->res);
+	}
+	debug("");
+	return 0;
+}
+
+static int
+_split_window(struct amcs_compositor *ctx, int key, void *opaq)
+{
+	struct amcs_workspace *w;
+
+	debug("");
+	w = pvector_get(&ctx->workspaces, ctx->cur_workspace);
+	if (w == NULL || w->current == NULL)
+		return 1;
+	amcs_workspace_split(w);
+	return 0;
+}
+
+static int
+_change_workspace(struct amcs_compositor *ctx, int key, void *opaq)
+{
+	struct amcs_workspace *w;
+	int n;
+
+	n = (int) opaq;
+	assert(ctx && n < NWORKSPACES + 1);
+
+	n--;
+	debug("");
+	w = pvector_get(&ctx->workspaces, n);
+	ctx->cur_workspace = n;
+	amcs_workspace_redraw(w);
+	return 0;
+}
+
+bool
+amcs_compositor_handle_key(struct amcs_compositor *ctx, int key, int state)
+{
+	int i;
+
+	struct {
+		int key;
+		int (*handler)(struct amcs_compositor *ctx, int key, void *opaq);
+		void *opaq;
+	} handlers[] = {
+
+		{49, _spawn_client, NULL}, //'n'	-- new window
+		{45, _kill_client, NULL}, //'x' -- kill window
+		{31, _split_window, NULL}, //'s' -- split
+		{2, _change_workspace, (void *)1}, //'1' -- workspace 1
+		{3, _change_workspace, (void *)2}, //'2' -- workspace 2
+		{4, _change_workspace, (void *)3}, //'3' -- workspace 3
+	};
+	debug("key = %d arrsz %lu", key, ARRSZ(handlers));
+
+	for (i = 0; i < ARRSZ(handlers); i++) {
+		if (key != handlers[i].key)
+			continue;
+		debug("key found");
+		if (state == WL_KEYBOARD_KEY_STATE_RELEASED)
+			return true;
+		handlers[i].handler(ctx, key, handlers[i].opaq);
+		return true;
+	}
+	return false;
 }
 
 struct amcs_client *
