@@ -11,6 +11,7 @@ Running
     $ make test
 
 or
+
     # WAYLAND_DEBUG=1 ./wlserv
     # WAYLAND_DISPLAY=wayland-0 WAYLAND_DEBUG=1 ./wlclient
 
