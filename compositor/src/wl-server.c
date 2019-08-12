@@ -550,9 +550,9 @@ amcs_compositor_deinit(struct amcs_compositor *ctx)
 }
 
 static int
-_spawn_client(struct amcs_compositor *ctx, int key, void *opaq)
+_spawn_proc(struct amcs_compositor *ctx, int key, void *opaq)
 {
-	char *cmd[] = {"./wlclient", NULL};
+	char *cmd[] = {(char *) opaq, NULL};
 	if (fork() == 0) {
 		debug("==@@@@@@==");
 		execvp(cmd[0], cmd);
@@ -600,7 +600,7 @@ _change_workspace(struct amcs_compositor *ctx, int key, void *opaq)
 	struct amcs_workspace *w;
 	int n;
 
-	n = (int) opaq;
+	n = (int) (intptr_t)opaq;
 	assert(ctx && n < NWORKSPACES + 1);
 
 	n--;
@@ -612,32 +612,36 @@ _change_workspace(struct amcs_compositor *ctx, int key, void *opaq)
 }
 
 bool
-amcs_compositor_handle_key(struct amcs_compositor *ctx, int key, int state)
+amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki)
 {
 	int i;
 
 	struct {
 		int key;
+		int modifier;
 		int (*handler)(struct amcs_compositor *ctx, int key, void *opaq);
 		void *opaq;
 	} handlers[] = {
-
-		{49, _spawn_client, NULL}, //'n'	-- new window
-		{45, _kill_client, NULL}, //'x' -- kill window
-		{31, _split_window, NULL}, //'s' -- split
-		{2, _change_workspace, (void *)1}, //'1' -- workspace 1
-		{3, _change_workspace, (void *)2}, //'2' -- workspace 2
-		{4, _change_workspace, (void *)3}, //'3' -- workspace 3
+		{XKB_KEY_n, KB_WIN, _spawn_proc, "./wlclient"},
+		{XKB_KEY_x, KB_WIN, _kill_client, NULL},
+		{XKB_KEY_s, KB_WIN, _split_window, NULL},
+		{XKB_KEY_Return, KB_WIN, _spawn_proc, "xfce4-terminal"},
+		{XKB_KEY_1, KB_WIN, _change_workspace, (void *)1},
+		{XKB_KEY_2, KB_WIN, _change_workspace, (void *)2},
+		{XKB_KEY_3, KB_WIN, _change_workspace, (void *)3},
 	};
-	debug("key = %d arrsz %lu", key, ARRSZ(handlers));
+	debug("key = %d arrsz %lu", ki->keysym, ARRSZ(handlers));
 
 	for (i = 0; i < ARRSZ(handlers); i++) {
-		if (key != handlers[i].key)
+		if (ki->keysym != handlers[i].key)
 			continue;
 		debug("key found");
-		if (state == WL_KEYBOARD_KEY_STATE_RELEASED)
+		if (ki->modifiers != handlers[i].modifier)
+			continue;
+		debug("modifiers match");
+		if (ki->state == WL_KEYBOARD_KEY_STATE_RELEASED)
 			return true;
-		handlers[i].handler(ctx, key, handlers[i].opaq);
+		handlers[i].handler(ctx, ki->keysym, handlers[i].opaq);
 		return true;
 	}
 	return false;

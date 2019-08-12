@@ -18,6 +18,9 @@
 #include "wl-server.h"
 
 #define SEAT_NAME "seat0"
+#define XKB_STATE(st) (st == LIBINPUT_KEY_STATE_RELEASED ? XKB_KEY_UP : XKB_KEY_DOWN)
+#define XKB_KEY(k) (k + 8)
+
 
 static void
 pointer_set_cursor(struct wl_client *client, struct wl_resource *resource,
@@ -64,25 +67,32 @@ struct libinput_interface input_iface = {
 	.close_restricted = close_restricted,
 };
 
-static struct seat *
+static struct amcs_seat *
 seat_new()
 {
-	struct seat *res;
+	struct amcs_seat *res;
 
 	res = xmalloc(sizeof(*res));
 	memset(res, 0, sizeof(*res));
 	if ((res->udev = udev_new()) == NULL)
 		error(1, "Can not create udev object.");
 	res->input = libinput_udev_create_context(&input_iface, res, res->udev);
-	assert(res->input);
+	assert(res->input && "can't initialize libinput context");
 
 	libinput_udev_assign_seat(res->input, SEAT_NAME);
 	res->ifd = libinput_get_fd(res->input);
+
+	res->xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	assert(res->xkb && "can't initialize keyboard context");
+	res->keymap = xkb_keymap_new_from_names(res->xkb, NULL, 0);
+	assert(res->keymap && "can't create keymap");
+	res->kbstate = xkb_state_new(res->keymap);
+
 	return res;
 }
 
 static void
-seat_free(struct seat *ps)
+seat_free(struct amcs_seat *ps)
 {
 	if (ps == NULL)
 		return;
@@ -90,8 +100,43 @@ seat_free(struct seat *ps)
 		udev_unref(ps->udev);
 	if (ps->input)
 		libinput_unref(ps->input);
+	if (ps->kbstate)
+		xkb_state_unref(ps->kbstate);
+	if (ps->keymap)
+		xkb_keymap_unref(ps->keymap);
+	if (ps->xkb)
+		xkb_context_unref(ps->xkb);
 	free(ps);
 }
+
+#define keymod_set(xkb_key, kb_mode) do {				\
+	index = xkb_keymap_mod_get_index(seat->keymap,		\
+		XKB_MOD_NAME_ ## xkb_key);			\
+	if (xkb_state_mod_index_is_active(seat->kbstate, index,	\
+		XKB_STATE_MODS_DEPRESSED))			\
+		ki->modifiers |= kb_mode;			\
+	} while (0)
+
+static void
+ki_state_init(struct amcs_key_info *ki, struct amcs_seat *seat, uint32_t keysym,
+		uint32_t state)
+{
+	struct xkb_state *s = seat->kbstate;
+	int index;
+
+	ki->mods.depressed = xkb_state_serialize_mods(s, XKB_STATE_MODS_DEPRESSED);
+	ki->mods.latched = xkb_state_serialize_mods(s, XKB_STATE_MODS_LATCHED);
+	ki->mods.locked = xkb_state_serialize_mods(s, XKB_STATE_MODS_LOCKED);
+	ki->keysym = keysym;
+	ki->state = state;
+	ki->modifiers = 0;
+
+	keymod_set(CTRL, KB_CTRL);
+	keymod_set(ALT, KB_ALT);
+	keymod_set(SHIFT, KB_SHIFT);
+	keymod_set(LOGO, KB_WIN);
+}
+#undef keymod_set
 
 static int
 process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
@@ -99,10 +144,11 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 	struct libinput_event_keyboard *k;
 	struct amcs_workspace *ws;
 	struct amcs_surface *surf;
+	struct amcs_key_info ki = {0};
 	struct wl_array arr;
 	uint32_t serial, time, key;
-	enum libinput_key_state state;
-	enum wl_keyboard_key_state wlstate;
+	uint32_t state;
+	xkb_keysym_t keysym;
 
 	/* for debugging purposes only
 	if (ctx->isactive == false)
@@ -113,28 +159,21 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 	time = libinput_event_keyboard_get_time(k);
 	key = libinput_event_keyboard_get_key(k);
 	state = libinput_event_keyboard_get_key_state(k);
-	if (state == LIBINPUT_KEY_STATE_RELEASED) {
-		wlstate = WL_KEYBOARD_KEY_STATE_RELEASED;
-	} else if (state == LIBINPUT_KEY_STATE_PRESSED) {
-		wlstate = WL_KEYBOARD_KEY_STATE_PRESSED;
-	} else {
-		warning("unknown key state %d", state);
-		return 1;
-	}
+	xkb_state_update_key(ctx->seat->kbstate, XKB_KEY(key), XKB_STATE(state));
+	keysym = xkb_state_key_get_one_sym(ctx->seat->kbstate, XKB_KEY(key));
+	debug("focus = %p", ctx->seat->focus);
 
-	debug("focus = %p", compositor_ctx.seat->focus);
-
-	if (amcs_compositor_handle_key(&compositor_ctx, key, wlstate))
+	ki_state_init(&ki, ctx->seat, keysym, state);
+	if (amcs_compositor_handle_key(ctx, &ki))
 		return 0;
 
-	if (compositor_ctx.seat->focus == NULL || compositor_ctx.seat->focus->keyboard == NULL) {
+	if (ctx->seat->focus == NULL || ctx->seat->focus->keyboard == NULL) {
 		warning("can't send keyboard event, no client keyboard connection");
 		return 1;
 	}
 
-
-	ws = pvector_get(&compositor_ctx.workspaces,
-			compositor_ctx.cur_workspace);
+	ws = pvector_get(&ctx->workspaces,
+			ctx->cur_workspace);
 	if (ws == NULL || ws->current == NULL)
 		return 1;
 
@@ -145,23 +184,22 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 		assert(surf && "can't get amcs_surface from amcs_win");
 
 		wl_array_init(&arr);
-		wl_keyboard_send_enter(compositor_ctx.seat->focus->keyboard,
+		wl_keyboard_send_enter(ctx->seat->focus->keyboard,
 			serial, surf->res, &arr);
 		wl_array_release(&arr);
 
-		wl_keyboard_send_key(compositor_ctx.seat->focus->keyboard,
+		wl_keyboard_send_modifiers(ctx->seat->focus->keyboard,
 			wl_display_next_serial(ctx->display),
-			time, key, wlstate);
+			ki.mods.depressed, ki.mods.latched, ki.mods.locked, 0);
+		wl_keyboard_send_key(ctx->seat->focus->keyboard,
+			wl_display_next_serial(ctx->display),
+			time, key, state);
 
 		if (surf->redraw_cb)
 			wl_callback_send_done(surf->redraw_cb, get_time());
 	}
 
-	debug("send (time, key, wlstate) (%d, %d, %d)", time, key, wlstate);
-	/*
-	wl_keyboard_send_key(wl_resource_from_link(&compositor_ctx.seat->resources)
-	    WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP,;
-	*/
+	debug("send (time, key, state) (%d, %d, %d)", time, key, state);
 	return 0;
 }
 
@@ -197,7 +235,7 @@ int
 notify_seat(int fd, uint32_t mask, void *data)
 {
 	struct amcs_compositor *ctx;
-	struct seat *seat = compositor_ctx.seat;
+	struct amcs_seat *seat = compositor_ctx.seat;
 	struct libinput_event *ev = NULL;
 
 	ctx = (struct amcs_compositor *) data;
@@ -268,7 +306,7 @@ seat_get_keyboard(struct wl_client *client, struct wl_resource *resource,
 	wl_resource_set_implementation(res, &keyboard_interface, resource, NULL);
 	assert(c->keyboard == NULL && "keyboard not null");
 	c->keyboard = res;
-	wl_keyboard_send_keymap(res, WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP, 0, 0);
+	wl_keyboard_send_keymap(res, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, 0, 0);
 	wl_keyboard_send_repeat_info(res, 200, 200);
 	wl_keyboard_send_modifiers(res,
 			wl_display_next_serial(compositor_ctx.display), 0, 0, 0, 0);

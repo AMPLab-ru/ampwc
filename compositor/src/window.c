@@ -195,7 +195,7 @@ int amcs_workspace_split(struct amcs_workspace *ws)
 	pos = amcs_container_pos(par, ws->current);
 	amcs_container_remove_idx(par, pos);
 	amcs_container_insert(c, ws->current, pos);
-	amcs_container_insert(par, c, 0);
+	amcs_container_insert(par, AMCS_WIN(c), 0);
 	amcs_container_resize_subwins(par);
 	return 0;
 }

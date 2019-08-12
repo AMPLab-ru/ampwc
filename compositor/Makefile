@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -Wall -ggdb -Iinclude -I../common/include -pthread `pkg-config --cflags libdrm`
-LDFLAGS = -lm `pkg-config --libs wayland-server libdrm libudev libinput`
+CFLAGS = -Wall -ggdb -Iinclude -I../common/include -pthread `pkg-config --cflags libdrm xkbcommon`
+LDFLAGS = -lm `pkg-config --libs wayland-server libdrm libudev libinput xkbcommon`
 TERM = xterm
 
 XDG_PROTO = ../xdg-shell.xml

@@ -59,7 +59,7 @@ struct amcs_compositor {
 	struct wl_event_loop *evloop;
 
 	struct renderer *renderer;
-	struct seat *seat;
+	struct amcs_seat *seat;
 	//struct drmdev dev;
 
 	struct wl_list clients;
@@ -78,8 +78,8 @@ extern struct amcs_compositor compositor_ctx;
 int   amcs_compositor_init    (struct amcs_compositor *ctx);
 void  amcs_compositor_deinit  (struct amcs_compositor *ctx);
 
-
-bool  amcs_compositor_handle_key(struct amcs_compositor *ctx, int key, int state);
+struct amcs_key_info;
+bool  amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki);
 
 //get amcs_client from any valid child resource
 struct amcs_client *amcs_get_client(struct wl_resource *res);
