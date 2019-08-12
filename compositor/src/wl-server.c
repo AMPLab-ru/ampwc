@@ -611,6 +611,22 @@ _change_workspace(struct amcs_compositor *ctx, int key, void *opaq)
 	return 0;
 }
 
+static int
+_change_window(struct amcs_compositor *ctx, int key, void *opaq)
+{
+	struct amcs_workspace *w;
+	struct amcs_surface *surf;
+
+	debug("");
+	w = pvector_get(&ctx->workspaces, ctx->cur_workspace);
+	if (w == NULL || w->current == NULL)
+		return 1;
+	amcs_workspace_focus_next(w, (int) (intptr_t)opaq);
+	surf = w->current->opaq;
+	seat_focus(surf->xdgtopres);
+	return 0;
+}
+
 bool
 amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki)
 {
@@ -623,12 +639,24 @@ amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki
 		void *opaq;
 	} handlers[] = {
 		{XKB_KEY_n, KB_WIN, _spawn_proc, "./wlclient"},
-		{XKB_KEY_x, KB_WIN, _kill_client, NULL},
+		{XKB_KEY_Q, KB_WIN | KB_SHIFT, _kill_client, NULL},
 		{XKB_KEY_s, KB_WIN, _split_window, NULL},
 		{XKB_KEY_Return, KB_WIN, _spawn_proc, "xfce4-terminal"},
+
+		{XKB_KEY_h, KB_WIN, _change_window, (void *)WS_LEFT},
+		{XKB_KEY_j, KB_WIN, _change_window, (void *)WS_DOWN},
+		{XKB_KEY_k, KB_WIN, _change_window, (void *)WS_UP},
+		{XKB_KEY_l, KB_WIN, _change_window, (void *)WS_RIGHT},
+
 		{XKB_KEY_1, KB_WIN, _change_workspace, (void *)1},
 		{XKB_KEY_2, KB_WIN, _change_workspace, (void *)2},
 		{XKB_KEY_3, KB_WIN, _change_workspace, (void *)3},
+		{XKB_KEY_4, KB_WIN, _change_workspace, (void *)4},
+		{XKB_KEY_5, KB_WIN, _change_workspace, (void *)5},
+		{XKB_KEY_6, KB_WIN, _change_workspace, (void *)6},
+		{XKB_KEY_7, KB_WIN, _change_workspace, (void *)7},
+		{XKB_KEY_8, KB_WIN, _change_workspace, (void *)8},
+		{XKB_KEY_9, KB_WIN, _change_workspace, (void *)9},
 	};
 	debug("key = %d arrsz %lu", ki->keysym, ARRSZ(handlers));
 

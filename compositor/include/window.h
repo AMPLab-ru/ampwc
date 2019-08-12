@@ -78,8 +78,14 @@ struct amcs_workspace *amcs_workspace_new(const char *name);
 void amcs_workspace_free(struct amcs_workspace *w);
 /* Handle resizing, repositioning and output structure changing. */
 void amcs_workspace_set_output(struct amcs_workspace *ws, struct amcs_output *out);
-// ????
-void amcs_workspace_focus(struct amcs_workspace *ws);
+
+enum ws_focus_direction {
+	WS_UP,
+	WS_DOWN,
+	WS_LEFT,
+	WS_RIGHT,
+};
+void amcs_workspace_focus_next(struct amcs_workspace *ws, enum ws_focus_direction next);
 void amcs_workspace_redraw(struct amcs_workspace *ws);
 void amcs_workspace_debug(struct amcs_workspace *ws);
 
