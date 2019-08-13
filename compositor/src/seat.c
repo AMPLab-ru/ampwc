@@ -142,6 +142,7 @@ static int
 process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 {
 	struct libinput_event_keyboard *k;
+	struct amcs_client *client;
 	struct amcs_workspace *ws;
 	struct amcs_surface *surf;
 	struct amcs_key_info ki = {0};
@@ -161,13 +162,15 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 	state = libinput_event_keyboard_get_key_state(k);
 	xkb_state_update_key(ctx->seat->kbstate, XKB_KEY(key), XKB_STATE(state));
 	keysym = xkb_state_key_get_one_sym(ctx->seat->kbstate, XKB_KEY(key));
-	debug("focus = %p", ctx->seat->focus);
+
+	client = amcs_current_client();
+	debug("focused client = %p", client);
 
 	ki_state_init(&ki, ctx->seat, keysym, state);
 	if (amcs_compositor_handle_key(ctx, &ki))
 		return 0;
 
-	if (ctx->seat->focus == NULL || ctx->seat->focus->keyboard == NULL) {
+	if (client == NULL || client->keyboard == NULL) {
 		warning("can't send keyboard event, no client keyboard connection");
 		return 1;
 	}
@@ -184,14 +187,14 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 		assert(surf && "can't get amcs_surface from amcs_win");
 
 		wl_array_init(&arr);
-		wl_keyboard_send_enter(ctx->seat->focus->keyboard,
+		wl_keyboard_send_enter(client->keyboard,
 			serial, surf->res, &arr);
 		wl_array_release(&arr);
 
-		wl_keyboard_send_modifiers(ctx->seat->focus->keyboard,
+		wl_keyboard_send_modifiers(client->keyboard,
 			wl_display_next_serial(ctx->display),
 			ki.mods.depressed, ki.mods.latched, ki.mods.locked, 0);
-		wl_keyboard_send_key(ctx->seat->focus->keyboard,
+		wl_keyboard_send_key(client->keyboard,
 			wl_display_next_serial(ctx->display),
 			time, key, state);
 
@@ -336,21 +339,7 @@ static const struct wl_seat_interface seat_interface = {
 static void
 unbind_seat(struct wl_resource *resource)
 {
-	struct amcs_client *c;
-
 	debug("");
-	c = wl_resource_get_user_data(resource);
-	assert(c);
-
-	if (compositor_ctx.seat->focus != c)
-		return;
-	if (wl_list_empty(&compositor_ctx.clients)) {
-		compositor_ctx.seat->focus = NULL;
-	} else {
-		struct wl_list *pos;
-		pos = compositor_ctx.clients.next;
-		compositor_ctx.seat->focus = wl_container_of(pos, c, link);
-	}
 }
 
 static void
@@ -386,18 +375,6 @@ seat_init(struct amcs_compositor *ctx)
 	wl_event_loop_add_fd(ctx->evloop, ctx->seat->ifd, WL_EVENT_READABLE,
 			notify_seat, ctx);
 	return 0;
-}
-
-int
-seat_focus(struct wl_resource *res)
-{
-	struct amcs_client *c;
-
-	debug("");
-	c = amcs_get_client(res);
-	assert(c != NULL);
-	compositor_ctx.seat->focus = c;
-	return 1;
 }
 
 int

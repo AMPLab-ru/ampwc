@@ -84,4 +84,7 @@ bool  amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_in
 //get amcs_client from any valid child resource
 struct amcs_client *amcs_get_client(struct wl_resource *res);
 
+struct amcs_win *amcs_current_window();
+struct amcs_client *amcs_current_client();
+
 #endif

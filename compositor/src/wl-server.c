@@ -615,15 +615,12 @@ static int
 _change_window(struct amcs_compositor *ctx, int key, void *opaq)
 {
 	struct amcs_workspace *w;
-	struct amcs_surface *surf;
 
 	debug("");
 	w = pvector_get(&ctx->workspaces, ctx->cur_workspace);
 	if (w == NULL || w->current == NULL)
 		return 1;
 	amcs_workspace_focus_next(w, (int) (intptr_t)opaq);
-	surf = w->current->opaq;
-	seat_focus(surf->xdgtopres);
 	return 0;
 }
 
@@ -695,6 +692,30 @@ amcs_get_client(struct wl_resource *res)
 			return iter;
 	}
 	return NULL;
+}
+
+struct amcs_win *
+amcs_current_window()
+{
+	struct amcs_workspace *ws;
+	struct amcs_compositor *ctx = &compositor_ctx;
+
+	ws = pvector_get(&ctx->workspaces, ctx->cur_workspace);
+	return ws->current;
+}
+
+struct amcs_client *
+amcs_current_client()
+{
+	struct amcs_win *w;
+	struct amcs_surface *surf;
+
+	w = amcs_current_window();
+	if (w == NULL)
+		return NULL;
+	surf = w->opaq;
+	assert(surf && "opaq field for amcs_window is NULL");
+	return amcs_get_client(surf->xdgtopres);
 }
 
 static void

@@ -110,7 +110,6 @@ amcs_tty_open(unsigned int num)
 	char *path;
 	char *str;
 
-
 	size = sizeof (tty_dev);
 	dev = xmalloc(size);
 	dev = memset(dev, 0, size);

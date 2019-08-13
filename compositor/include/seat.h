@@ -39,15 +39,9 @@ struct amcs_seat {
 
 	int ifd;			// libinput file descriptor
 	int capabilities;
-	struct amcs_client *focus;
 };
 
 int seat_init(struct amcs_compositor *ctx);
-
-/* Focus on client, that owns this resource. */
-//TODO
-int seat_focus(struct wl_resource *res);
-
 int seat_finalize(struct amcs_compositor *ctx);
 
 #endif

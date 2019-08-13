@@ -192,8 +192,6 @@ window_init(struct amcs_surface *mysurf)
 			&mysurf->surf_states);
 
 	xdg_surface_send_configure(mysurf->xdgres, serial);
-	seat_focus(mysurf->xdgres);
-
 	c = amcs_get_client(mysurf->res);
 	assert(c && "can't locate client");
 
