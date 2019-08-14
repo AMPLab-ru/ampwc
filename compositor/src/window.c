@@ -203,6 +203,11 @@ amcs_workspace_win_move(struct amcs_workspace *ws, enum ws_lookup_dir direction)
 	pos = amcs_container_pos(w->parent, w);
 	amcs_container_remove(oldroot, ws->current);
 	amcs_container_insert(w->parent, ws->current, pos);
+	while (amcs_container_nmemb(oldroot) == 0 && oldroot->parent) {
+		struct amcs_container *tmp = oldroot;
+		oldroot = oldroot->parent;
+		amcs_container_remove(oldroot, AMCS_WIN(tmp));
+	}
 	amcs_container_resize_subwins(w->parent);
 	amcs_container_resize_subwins(oldroot);
 }
@@ -431,8 +436,14 @@ amcs_container_resize_subwins(struct amcs_container *wt)
 		return 0;
 
 	nwin = pvector_len(&wt->subwins);
-	if (nwin == 0)
+	if (nwin == 0) {
+		struct amcs_workspace *ws;
+		ws = win_get_workspace(AMCS_WIN(wt));
+		// Special case, clear buffer if last workspace window is deleted
+		if (wt == ws->root)
+			amcs_output_clear(ws->out);
 		return 0;
+	}
 
 	if (wt->wt == CONTAINER_HSPLIT) {
 		step = wt->h / nwin;
@@ -498,8 +509,12 @@ amcs_win_orphain(struct amcs_win *w)
 	if (ws->current == w) {
 		ws->current = win_get_neighbour_win(w, WS_ANY);
 	}
-	w->parent = NULL;
 	amcs_container_remove(par, w);
+	while (amcs_container_nmemb(par) == 0 && par->parent) {
+		struct amcs_container *tmp = par;
+		par = par->parent;
+		amcs_container_remove(par, AMCS_WIN(tmp));
+	}
 
 	return 0;
 }
