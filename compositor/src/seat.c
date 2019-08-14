@@ -143,7 +143,7 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 {
 	struct libinput_event_keyboard *k;
 	struct amcs_client *client;
-	struct amcs_workspace *ws;
+	struct amcs_win *w;
 	struct amcs_surface *surf;
 	struct amcs_key_info ki = {0};
 	struct wl_array arr;
@@ -175,32 +175,27 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 		return 1;
 	}
 
-	ws = pvector_get(&ctx->workspaces,
-			ctx->cur_workspace);
-	if (ws == NULL || ws->current == NULL)
+	w = amcs_current_window();
+	if (w == NULL)
 		return 1;
 
 	serial = wl_display_next_serial(ctx->display);
-	if (ws->current != NULL && ws->current->opaq != NULL) {
-		debug("send enter");
-		surf = amcs_win_get_opaq(ws->current);
-		assert(surf && "can't get amcs_surface from amcs_win");
+	surf = amcs_win_get_opaq(w);
+	assert(surf && "can't get amcs_surface from amcs_win");
 
-		wl_array_init(&arr);
-		wl_keyboard_send_enter(client->keyboard,
-			serial, surf->res, &arr);
-		wl_array_release(&arr);
+	wl_array_init(&arr);
+	wl_keyboard_send_enter(client->keyboard, serial, surf->res, &arr);
+	wl_array_release(&arr);
 
-		wl_keyboard_send_modifiers(client->keyboard,
-			wl_display_next_serial(ctx->display),
-			ki.mods.depressed, ki.mods.latched, ki.mods.locked, 0);
-		wl_keyboard_send_key(client->keyboard,
-			wl_display_next_serial(ctx->display),
-			time, key, state);
+	wl_keyboard_send_modifiers(client->keyboard,
+		wl_display_next_serial(ctx->display),
+		ki.mods.depressed, ki.mods.latched, ki.mods.locked, 0);
+	wl_keyboard_send_key(client->keyboard,
+		wl_display_next_serial(ctx->display),
+		time, key, state);
 
-		if (surf->redraw_cb)
-			wl_callback_send_done(surf->redraw_cb, get_time());
-	}
+	if (surf->redraw_cb)
+		wl_callback_send_done(surf->redraw_cb, get_time());
 
 	debug("send (time, key, state) (%d, %d, %d)", time, key, state);
 	return 0;

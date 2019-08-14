@@ -57,34 +57,48 @@ win_get_workspace(struct amcs_win *w)
 
 /* search nearby amcs_win recursively */
 static struct amcs_win *
-win_get_neighbour_win(struct amcs_win *w)
+win_get_neighbour_win(struct amcs_win *w, enum ws_lookup_dir direction)
 {
-	int pos, len;
+	int pos, n;
+	int diff = 0;
 
 	if (w->parent == NULL)
 		return NULL;
-	do {
-		len = pvector_len(&w->parent->subwins);
-		if (len > 1) {
-			struct amcs_win *next;
-			pos = amcs_container_pos(w->parent, w);
-			if (pos >= len - 1)
-				next = pvector_get(&w->parent->subwins, pos - 1);
-			else
-				next = pvector_get(&w->parent->subwins, pos + 1);
-			if (next->type == WT_WIN) {
-				return next;
-			} else if (next->type == WT_TREE) {
-				struct amcs_container *c;
-				c = AMCS_CONTAINER(next);
-				assert(pvector_len(&c->subwins) > 0 && "get_neighbour error, should not happen");
-				return pvector_get(&c->subwins, 0);
-			} else {
-				error(3, "should not reach");
-			}
+
+	if (direction == WS_DOWN || direction == WS_RIGHT)
+		diff = 1;
+	else if (direction == WS_UP || direction == WS_LEFT)
+		diff = -1;
+
+	for (;w != NULL && w->parent != NULL;
+	    w = AMCS_WIN(w->parent)) {
+		n = amcs_container_nmemb(w->parent);
+		if (n == 1)
+			continue;
+		if ((direction == WS_UP || direction == WS_DOWN) && w->parent->wt == CONTAINER_VSPLIT)
+			continue;
+		if ((direction == WS_LEFT || direction == WS_RIGHT) && w->parent->wt == CONTAINER_HSPLIT)
+			continue;
+		debug("neightbour_win, after checks");
+		pos = amcs_container_pos(w->parent, w);
+		if ((pos == 0 && diff == -1) ||
+		    (pos == n - 1 && diff == 1))
+			continue;
+		if (direction == WS_ANY) {
+			// special case we can choose any valid direction
+			diff = 1;
+			if (pos == n - 1)
+				diff = -1;
 		}
-		w = AMCS_WIN(w->parent);
-	} while (w != NULL && w->parent != NULL);
+		w = pvector_get(&w->parent->subwins, pos + diff);
+		while (w->type == WT_TREE) {
+			struct amcs_container *c;
+			c = AMCS_CONTAINER(w);
+			assert(pvector_len(&c->subwins) > 0 && "get_neighbour error, should not happen");
+			w = pvector_get(&c->subwins, 0);
+		}
+		return w;
+	}
 	return NULL;
 }
 
@@ -151,9 +165,28 @@ amcs_workspace_set_output(struct amcs_workspace *ws, struct amcs_output *out)
 
 void
 amcs_workspace_focus_next(struct amcs_workspace *ws,
-		enum ws_focus_direction next)
+		enum ws_lookup_dir direction)
 {
 	struct amcs_win *w;
+
+	assert(ws->root);
+	debug("");
+	if (ws->current == NULL && amcs_container_nmemb(ws->root) > 0)
+		error(3, "window.c programmer error");
+	if (ws->current == NULL)
+		return;
+	w = win_get_neighbour_win(ws->current, direction);
+	if (w) {
+		debug("change current focus to %p", w);
+		ws->current = w;
+	}
+}
+
+void
+amcs_workspace_win_move(struct amcs_workspace *ws, enum ws_lookup_dir direction)
+{
+	struct amcs_win *w;
+	struct amcs_container *oldroot;
 	int pos;
 
 	assert(ws->root);
@@ -162,34 +195,16 @@ amcs_workspace_focus_next(struct amcs_workspace *ws,
 		error(3, "window.c programmer error");
 	if (ws->current == NULL)
 		return;
-	w = ws->current;
-	do {
-		int n;
-		int diff = -1;
-		if ((next == WS_UP || next == WS_DOWN) && w->parent->wt == CONTAINER_VSPLIT)
-			goto next_iter;
-		if ((next == WS_LEFT || next == WS_RIGHT) && w->parent->wt == CONTAINER_HSPLIT)
-			goto next_iter;
-		debug("change window, after checks");
-		if (next == WS_DOWN || next == WS_RIGHT)
-			diff = 1;
-		debug("diff = %d", diff);
-
-		pos = amcs_container_pos(w->parent, w);
-		n = amcs_container_nmemb(w->parent);
-		if (n == 1 ||
-		    (pos == 0 && diff == -1) ||
-		    (pos == n - 1 && diff == 1))
-			goto next_iter;
-
-		w = pvector_get(&w->parent->subwins, pos + diff);
-		debug("@change current focus@ %p", w);
-		ws->current = w;
-		assert(ws->current && "can't get vector");
-		break;
-next_iter:
-		w = AMCS_WIN(w->parent);
-	} while (w != NULL && w->parent != NULL);
+	w = win_get_neighbour_win(ws->current, direction);
+	if (w == NULL)
+		return;
+	//TODO: update window only after move
+	oldroot = ws->current->parent;
+	pos = amcs_container_pos(w->parent, w);
+	amcs_container_remove(oldroot, ws->current);
+	amcs_container_insert(w->parent, ws->current, pos);
+	amcs_container_resize_subwins(w->parent);
+	amcs_container_resize_subwins(oldroot);
 }
 
 void amcs_workspace_redraw(struct amcs_workspace *ws)
@@ -237,8 +252,8 @@ int amcs_workspace_split(struct amcs_workspace *ws)
 	c = amcs_container_new(NULL, type);
 	pos = amcs_container_pos(par, ws->current);
 	amcs_container_remove_idx(par, pos);
-	amcs_container_insert(c, ws->current, pos);
-	amcs_container_insert(par, AMCS_WIN(c), 0);
+	amcs_container_insert(c, ws->current, 0);
+	amcs_container_insert(par, AMCS_WIN(c), pos);
 	amcs_container_resize_subwins(par);
 	return 0;
 }
@@ -301,8 +316,9 @@ amcs_container_insert(struct amcs_container *wt, struct amcs_win *w, int pos)
 	assert(wt && (wt->type == WT_TREE || w->type == WT_WIN));
 
 	debug("insert %p, into %p nsubwinds %zd", w, wt, pvector_len(&wt->subwins));
-	warning("TODO: insert into specified positon");
-	pvector_push(&wt->subwins, w);
+	if (pos == -1 || pos > pvector_len(&wt->subwins))
+		pos = pvector_len(&wt->subwins);
+	pvector_add(&wt->subwins, pos, w);
 	w->parent = wt;
 	return 0;
 }
@@ -480,7 +496,7 @@ amcs_win_orphain(struct amcs_win *w)
 	par = w->parent;
 	ws = win_get_workspace(w);
 	if (ws->current == w) {
-		ws->current = win_get_neighbour_win(w);
+		ws->current = win_get_neighbour_win(w, WS_ANY);
 	}
 	w->parent = NULL;
 	amcs_container_remove(par, w);

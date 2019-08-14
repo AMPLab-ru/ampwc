@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -624,10 +625,23 @@ _change_window(struct amcs_compositor *ctx, int key, void *opaq)
 	return 0;
 }
 
+static int
+_move_window(struct amcs_compositor *ctx, int key, void *opaq)
+{
+	struct amcs_workspace *w;
+
+	debug("");
+	w = pvector_get(&ctx->workspaces, ctx->cur_workspace);
+	if (w == NULL || w->current == NULL)
+		return 1;
+	amcs_workspace_win_move(w, (int) (intptr_t)opaq);
+	return 0;
+}
+
 bool
 amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki)
 {
-	int i;
+	int i, sym;
 
 	struct {
 		int key;
@@ -636,7 +650,7 @@ amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki
 		void *opaq;
 	} handlers[] = {
 		{XKB_KEY_n, KB_WIN, _spawn_proc, "./wlclient"},
-		{XKB_KEY_Q, KB_WIN | KB_SHIFT, _kill_client, NULL},
+		{XKB_KEY_q, KB_WIN | KB_SHIFT, _kill_client, NULL},
 		{XKB_KEY_s, KB_WIN, _split_window, NULL},
 		{XKB_KEY_Return, KB_WIN, _spawn_proc, "xfce4-terminal"},
 
@@ -644,6 +658,11 @@ amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki
 		{XKB_KEY_j, KB_WIN, _change_window, (void *)WS_DOWN},
 		{XKB_KEY_k, KB_WIN, _change_window, (void *)WS_UP},
 		{XKB_KEY_l, KB_WIN, _change_window, (void *)WS_RIGHT},
+
+		{XKB_KEY_h, KB_WIN | KB_SHIFT, _move_window, (void *)WS_LEFT},
+		{XKB_KEY_j, KB_WIN | KB_SHIFT, _move_window, (void *)WS_DOWN},
+		{XKB_KEY_k, KB_WIN | KB_SHIFT, _move_window, (void *)WS_UP},
+		{XKB_KEY_l, KB_WIN | KB_SHIFT, _move_window, (void *)WS_RIGHT},
 
 		{XKB_KEY_1, KB_WIN, _change_workspace, (void *)1},
 		{XKB_KEY_2, KB_WIN, _change_workspace, (void *)2},
@@ -655,10 +674,14 @@ amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki
 		{XKB_KEY_8, KB_WIN, _change_workspace, (void *)8},
 		{XKB_KEY_9, KB_WIN, _change_workspace, (void *)9},
 	};
-	debug("key = %d arrsz %lu", ki->keysym, ARRSZ(handlers));
+	sym = ki->keysym;
+	debug("key = %d, modifiers %d arrsz %lu", sym, ki->modifiers, ARRSZ(handlers));
+	/* try to canonicalize only latin letters */
+	if (sym < 0x7f && isupper(sym))
+		sym = tolower(sym);
 
 	for (i = 0; i < ARRSZ(handlers); i++) {
-		if (ki->keysym != handlers[i].key)
+		if (sym != handlers[i].key)
 			continue;
 		debug("key found");
 		if (ki->modifiers != handlers[i].modifier)
@@ -666,7 +689,7 @@ amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki
 		debug("modifiers match");
 		if (ki->state == WL_KEYBOARD_KEY_STATE_RELEASED)
 			return true;
-		handlers[i].handler(ctx, ki->keysym, handlers[i].opaq);
+		handlers[i].handler(ctx, sym, handlers[i].opaq);
 		return true;
 	}
 	return false;
