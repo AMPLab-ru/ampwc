@@ -134,6 +134,7 @@ amcs_output_update_region(struct amcs_output *out, struct amcs_win *win)
 	struct amcs_screen *screen;
 	int i, j, h, w;
 	size_t offset;
+	int buf_off;
 
 	debug("nscreens %lu", pvector_len(&out->screens));
 	// no actual surface
@@ -144,12 +145,13 @@ amcs_output_update_region(struct amcs_output *out, struct amcs_win *win)
 
 	screen = pvector_get(&out->screens, 0);
 	//TODO: use additional screens
-	h = MIN(win->h, win->buf.h);
-	w = MIN(win->w, win->buf.w);
+	h = MIN(win->buf.h, win->v_box.h);
+	w = MIN(win->buf.w, win->v_box.w);
+	buf_off = win->v_box.y * win->buf.w;
 	for (i = 0; i < h; ++i) {
 		for (j = 0; j < w; ++j) {
-			offset = screen->pitch * (i + win->y) + 4*(j + win->x);
-			*(uint32_t*)&screen->buf[offset] = win->buf.dt[win->buf.w * i + j];
+			offset = screen->pitch * (i + win->y) + 4 * (j + win->x);
+			*(uint32_t*)&screen->buf[offset] = win->buf.dt[win->v_box.x + buf_off + win->buf.w * i + j];
 		}
 	}
 	return 0;

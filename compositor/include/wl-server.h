@@ -32,8 +32,8 @@ struct amcs_surface {
 	struct amcs_win *aw;
 	struct {
 		struct wl_shm_buffer *buf;
-		int x;
-		int y;
+		int w, h;
+		int x, y;
 		int upd_source;
 		int xdg_serial;
 	} pending;

@@ -183,11 +183,7 @@ surf_commit(struct wl_client *client, struct wl_resource *resource)
 
 	x = mysurf->pending.x;
 	y = mysurf->pending.y;
-	if (mysurf->w + x < 0 || mysurf->h + y < 0) {
-		error(1, "TODO, negative coordinates");
-	}
 	wl_shm_buffer_begin_access(buf);
-
 	data = wl_shm_buffer_get_data(buf);
 	debug("data = %p", data);
 	if (mysurf->aw) {
@@ -196,6 +192,8 @@ surf_commit(struct wl_client *client, struct wl_resource *resource)
 
 		h = wl_shm_buffer_get_height(buf);
 		w = wl_shm_buffer_get_width(buf);
+		assert(x + mysurf->pending.w <= w);
+		assert(y + mysurf->pending.h <= h);
 		debug("try to commit buf, (x, y) (%d, %d), (w, h) (%d, %d)",
 		      x, y, w, h);
 
@@ -210,6 +208,11 @@ surf_commit(struct wl_client *client, struct wl_resource *resource)
 		if (mysurf->aw->buf.sz < bufsz)
 			mysurf->aw->buf.dt = xrealloc(mysurf->aw->buf.dt, bufsz);
 		mysurf->aw->buf.sz = bufsz;
+		mysurf->aw->v_box.w = MIN(mysurf->pending.w, mysurf->w);
+		mysurf->aw->v_box.h = MIN(mysurf->pending.h, mysurf->h);
+		mysurf->aw->v_box.x = x;
+		mysurf->aw->v_box.y = y;
+
 		mysurf->aw->buf.h = h;
 		mysurf->aw->buf.w = w;
 

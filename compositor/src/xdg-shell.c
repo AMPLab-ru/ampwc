@@ -219,7 +219,14 @@ static void
 surf_set_window_geometry(struct wl_client *client, struct wl_resource *resource,
 	int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	warning("x = %d y = %d w = %d h = %d", x, y, width, height);
+	struct amcs_surface *mysurf;
+	mysurf = wl_resource_get_user_data(resource);
+	debug("mysurf %p", mysurf);
+	mysurf->pending.x = x;
+	mysurf->pending.y = y;
+	mysurf->pending.w = width;
+	mysurf->pending.h = height;
+	debug("x = %d y = %d w = %d h = %d", x, y, width, height);
 }
 
 static void

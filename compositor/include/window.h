@@ -64,10 +64,18 @@ struct amcs_win {
 	enum win_objtype type;
 	struct amcs_container *parent;
 
+	//window coordinates
 	int w, h;
 	int x, y;
 
 	struct amcs_buf buf;
+
+	// wayland specific stuff, store information about visible region
+	// of window buffer
+	struct {
+		int w, h;
+		int x, y;
+	} v_box;
 
 	void *opaq;	//TODO: getter/setter ???
 	win_update_cb upd_cb;
