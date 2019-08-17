@@ -58,6 +58,8 @@ struct amcs_compositor {
 	struct wl_display *display;
 	struct wl_event_loop *evloop;
 
+	struct amcs_orpc *orpc;
+
 	struct renderer *renderer;
 	struct amcs_seat *seat;
 	//struct drmdev dev;

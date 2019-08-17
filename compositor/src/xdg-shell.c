@@ -152,7 +152,7 @@ window_update_cb(struct amcs_win *win, void *opaq)
 	p = wl_array_add(&arr, sizeof(*p));
 	*p = XDG_TOPLEVEL_STATE_ACTIVATED;
 	p = wl_array_add(&arr, sizeof(*p));
-	*p = XDG_TOPLEVEL_STATE_RESIZING;
+	*p = XDG_TOPLEVEL_STATE_MAXIMIZED;
 
 	xdg_toplevel_send_configure(surf->xdgtopres, win->w, win->h, &arr);
 	serial = wl_display_next_serial(compositor_ctx.display);

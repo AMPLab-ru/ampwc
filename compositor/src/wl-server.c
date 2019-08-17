@@ -1,14 +1,15 @@
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
+#include <unistd.h>
 
 #include "xdg-shell-server.h"
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <wayland-server.h>
 #include <wayland-server-core.h>
@@ -16,6 +17,7 @@
 
 #include "common.h"
 #include "macro.h"
+#include "orpc.h"
 #include "output.h"
 #include "seat.h"
 #include "wl-server.h"
@@ -466,6 +468,10 @@ amcs_compositor_init(struct amcs_compositor *ctx)
 
 	memset(ctx, 0, sizeof(*ctx));
 
+	ctx->orpc = xmalloc(sizeof(ctx->orpc));
+	if (!orpc_init(ctx->orpc))
+		error(1, "can't initialize orpc");
+
 	wl_list_init(&ctx->clients);
 	wl_list_init(&ctx->surfaces);
 
@@ -525,7 +531,6 @@ amcs_compositor_init(struct amcs_compositor *ctx)
 		amcs_workspace_set_output(ws, ctx->output);
 		pvector_push(&ctx->workspaces, ws);
 	}
-
 	return 0;
 finalize:
 	amcs_compositor_deinit(ctx);
@@ -551,6 +556,10 @@ amcs_compositor_deinit(struct amcs_compositor *ctx)
 		/* code */
 	}
 	pvector_free(&ctx->workspaces);
+	if (ctx->orpc) {
+		orpc_deinit(ctx->orpc);
+		free(ctx->orpc);
+	}
 }
 
 static int
@@ -772,7 +781,7 @@ main(int argc, const char *argv[])
 		return 1;
 
 	debug("tty init");
-	amcs_tty_open(0);
+	amcs_tty_open(compositor_ctx.orpc, 0);
 	amcs_tty_sethand(start_draw, stop_draw);
 
 	sigemptyset(&set);

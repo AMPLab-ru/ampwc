@@ -14,6 +14,7 @@
 
 #include "common.h"
 #include "macro.h"
+#include "orpc.h"
 #include "seat.h"
 #include "wl-server.h"
 
@@ -53,7 +54,10 @@ const struct wl_keyboard_interface keyboard_interface = {
 
 static int open_restricted(const char *path, int flags, void *user_data)
 {
-	return open(path, flags);
+	struct amcs_orpc *orpc = user_data;
+
+	assert(orpc && "orpc is null :-(");
+	return orpc_open(orpc, path, flags);
 }
 
 static void close_restricted(int fd, void *user_data)
@@ -61,14 +65,13 @@ static void close_restricted(int fd, void *user_data)
 	close(fd);
 }
 
-//actually not so restricted :-)
 struct libinput_interface input_iface = {
 	.open_restricted = open_restricted,
 	.close_restricted = close_restricted,
 };
 
 static struct amcs_seat *
-seat_new()
+seat_new(struct amcs_compositor *ctx)
 {
 	struct amcs_seat *res;
 
@@ -76,7 +79,7 @@ seat_new()
 	memset(res, 0, sizeof(*res));
 	if ((res->udev = udev_new()) == NULL)
 		error(1, "Can not create udev object.");
-	res->input = libinput_udev_create_context(&input_iface, res, res->udev);
+	res->input = libinput_udev_create_context(&input_iface, ctx->orpc, res->udev);
 	assert(res->input && "can't initialize libinput context");
 
 	libinput_udev_assign_seat(res->input, SEAT_NAME);
@@ -365,7 +368,7 @@ seat_init(struct amcs_compositor *ctx)
 		warning("can't create seat inteface");
 		return 1;
 	}
-	ctx->seat = seat_new();
+	ctx->seat = seat_new(ctx);
 
 	wl_event_loop_add_fd(ctx->evloop, ctx->seat->ifd, WL_EVENT_READABLE,
 			notify_seat, ctx);

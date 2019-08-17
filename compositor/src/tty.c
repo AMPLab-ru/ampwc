@@ -1,4 +1,5 @@
 #include <alloca.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -14,6 +15,7 @@
 #include <linux/vt.h>
 #include <linux/kd.h>
 
+#include "orpc.h"
 #include "tty.h"
 #include "macro.h"
 
@@ -103,7 +105,7 @@ tty_get_current(int fd)
 }
 
 void
-amcs_tty_open(unsigned int num)
+amcs_tty_open(struct amcs_orpc *ctx, unsigned int num)
 {
 	int fd;
 	size_t size;
@@ -120,7 +122,7 @@ amcs_tty_open(unsigned int num)
 	}
 
 	if (num == 0) {
-		if ((fd = open("/dev/tty1", O_RDWR | O_NOCTTY)) < 0) {
+		if ((fd = orpc_open(ctx, "/dev/tty1", O_RDWR | O_NOCTTY)) < 0) {
 			perror("open('/dev/tty1', O_RDWR | O_NOCTTY)");
 			exit(1);
 		}
@@ -151,7 +153,7 @@ amcs_tty_open(unsigned int num)
 	free(str);
 
 	debug("Open terminal: %s", path);
-	if ((dev->fd = open(path, O_RDWR | O_CLOEXEC)) < 0) {
+	if ((dev->fd = orpc_open(ctx, path, O_RDWR | O_CLOEXEC)) < 0) {
 		perror("open(path, O_RDWR | O_CLOEXEC)");
 		exit(1);
 	}
