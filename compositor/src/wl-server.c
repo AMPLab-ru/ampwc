@@ -460,6 +460,7 @@ device_manager_init(struct amcs_compositor *ctx)
 	}
 	return 0;
 }
+
 int
 amcs_compositor_init(struct amcs_compositor *ctx)
 {
@@ -753,45 +754,16 @@ amcs_current_client()
 	return amcs_get_client(surf->xdgtopres);
 }
 
-static void
-term_handler(int signo)
-{
-	struct sigaction act;
-	sigset_t set;
-
-	memset(&act, 0, sizeof(act));
-	sigemptyset(&set);
-	act.sa_handler = SIG_DFL;
-	sigaction(signo, &act, NULL);
-
-	stop_draw();
-	amcs_tty_restore_term();
-	raise(signo);
-}
-
 int
 main(int argc, const char *argv[])
 {
 	int rc;
 	struct sigaction act;
-	sigset_t set;
 
 	memset(&act, 0, sizeof(act));
 	if (amcs_compositor_init(&compositor_ctx) != 0)
 		return 1;
-
-	debug("tty init");
-	amcs_tty_open(compositor_ctx.orpc, 0);
-	amcs_tty_sethand(start_draw, stop_draw);
-
-	sigemptyset(&set);
-	act.sa_handler = term_handler;
-
-	sigaction(SIGINT, &act, NULL);
-	sigaction(SIGTERM, &act, NULL);
-	sigaction(SIGSEGV, &act, NULL);
-
-	atexit(stop_draw);
+	orpc_tty_init(compositor_ctx.orpc, start_draw, stop_draw);
 
 	debug("event loop dispatch");
 	while (1) {

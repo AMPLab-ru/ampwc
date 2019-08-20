@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,7 @@
 #include <sys/mman.h>
 
 #include "macro.h"
+#include "orpc.h"
 #include "amcs_drm.h"
 
 
@@ -86,7 +88,7 @@ drm_setFB(int fd, amcs_drm_dev *dev)
 }
 
 amcs_drm_card*
-amcs_drm_init(const char *path)
+amcs_drm_init(struct amcs_orpc *orpc, const char *path)
 {
 	int i;
 	int fd;
@@ -103,7 +105,7 @@ amcs_drm_init(const char *path)
 	assert(path);
 	debug("Init dev: %s", path);
 
-	if ((fd = open(path, O_RDWR)) < 0) {
+	if ((fd = orpc_open(orpc, path, O_RDWR | O_CLOEXEC)) < 0) {
 		perror("amcs_drm_init()");
 		return NULL;
 	}

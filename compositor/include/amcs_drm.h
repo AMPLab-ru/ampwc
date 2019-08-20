@@ -27,7 +27,7 @@ struct amcs_drm_card {
 	amcs_drm_dev_list *list;
 };
 
-amcs_drm_card *amcs_drm_init(const char *path);
+amcs_drm_card *amcs_drm_init(struct amcs_orpc *orpc, const char *path);
 void amcs_drm_free(amcs_drm_card *card);
 
 #endif // _AMCS_DRM_H

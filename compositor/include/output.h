@@ -3,7 +3,6 @@
 
 #include <stdbool.h>
 
-#include "amcs_drm.h"
 #include "vector.h"
 //TODO: refactor amcs_output and amcs_win relation
 #include "window.h"

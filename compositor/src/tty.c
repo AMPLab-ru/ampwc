@@ -15,10 +15,8 @@
 #include <linux/vt.h>
 #include <linux/kd.h>
 
-#include "orpc.h"
 #include "tty.h"
 #include "macro.h"
-
 
 typedef struct tty_dev {
 	int fd;
@@ -28,12 +26,11 @@ typedef struct tty_dev {
 	int state;
 } tty_dev;
 
-
-static void (*extern_acquisition) (void);
-static void (*extern_release) (void);
+static void (*extern_acquisition) (void *opaq);
+static void (*extern_release) (void *opaq);
+void *extern_opaq;
 static tty_dev *dev;
 static pthread_mutex_t signal_mux;
-
 
 static char*
 uitoa(unsigned int n)
@@ -69,7 +66,7 @@ tty_acquisition(int sig)
 
 	if (dev->state == 0) {
 		dev->state = 1;
-		extern_acquisition();
+		extern_acquisition(extern_opaq);
 	}
 
 	pthread_mutex_unlock(&signal_mux);
@@ -83,7 +80,7 @@ tty_release(int sig)
 
 	if (dev->state == 1) {
 		dev->state = 0;
-		extern_release();
+		extern_release(extern_opaq);
 		if ((errno = ioctl(dev->fd, VT_RELDISP, VT_ACKACQ)) != 0)
 			perror("ioctl(dev->fd, VT_RELDISP, VT_ACKACQ))");
 	}
@@ -105,7 +102,7 @@ tty_get_current(int fd)
 }
 
 void
-amcs_tty_open(struct amcs_orpc *ctx, unsigned int num)
+amcs_tty_open(unsigned int num)
 {
 	int fd;
 	size_t size;
@@ -122,8 +119,8 @@ amcs_tty_open(struct amcs_orpc *ctx, unsigned int num)
 	}
 
 	if (num == 0) {
-		if ((fd = orpc_open(ctx, "/dev/tty1", O_RDWR | O_NOCTTY)) < 0) {
-			perror("open('/dev/tty1', O_RDWR | O_NOCTTY)");
+		if ((fd = open("/dev/tty1", O_RDWR | O_NOCTTY | O_CLOEXEC)) < 0) {
+			perror("open('/dev/tty1', O_RDWR | O_NOCTTY | O_CLOEXEC)");
 			exit(1);
 		}
 
@@ -153,7 +150,7 @@ amcs_tty_open(struct amcs_orpc *ctx, unsigned int num)
 	free(str);
 
 	debug("Open terminal: %s", path);
-	if ((dev->fd = orpc_open(ctx, path, O_RDWR | O_CLOEXEC)) < 0) {
+	if ((dev->fd = open(path, O_RDWR | O_CLOEXEC)) < 0) {
 		perror("open(path, O_RDWR | O_CLOEXEC)");
 		exit(1);
 	}
@@ -184,15 +181,15 @@ amcs_tty_restore_term()
 }
 
 void
-amcs_tty_sethand(void (*ext_acq) (void), void (*ext_rel) (void))
+amcs_tty_sethand(amcs_tty_handler_t acq, amcs_tty_handler_t rel, void *opaq)
 {
 	struct vt_mode mode;
 
+	assert(acq && rel);
 
-	assert(ext_acq && ext_rel);
-
-	extern_acquisition = ext_acq;
-	extern_release = ext_rel;
+	extern_acquisition = acq;
+	extern_release = rel;
+	extern_opaq = opaq;
 
 	if (signal(SIGUSR1, tty_acquisition) == SIG_ERR) {
 		perror("signal(SIGUSR1, tty_acquisition)");
@@ -203,7 +200,6 @@ amcs_tty_sethand(void (*ext_acq) (void), void (*ext_rel) (void))
 		perror("signal(SIGUSR2, tty_release)");
 		exit(1);
 	}
-
 
 	if (ioctl(dev->fd, VT_GETMODE, &mode)) {
 		perror("ioctl(dev->fd, VT_GETMODE, &mode)");

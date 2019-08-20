@@ -9,22 +9,19 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+#include "vector.h"
 #include "udev.h"
 #include "macro.h"
 
 struct amcs_monitor {
 	char *name;
 	int status;
-
-	amcs_monitor_list *next;
 };
 
-
-static amcs_monitor_list *monitor_list;
+pvector *g_monitors;
 void (*ext_update_status)(const char *name, int status);
 
-
-amcs_monitor_list*
+pvector *
 amcs_udev_get_monitors(void)
 {
 	const char *path, *status;
@@ -32,24 +29,23 @@ amcs_udev_get_monitors(void)
 	struct udev_device *udev_dev;
 	struct udev_enumerate *udev_enum;
 	struct udev_list_entry *udev_list, *udev_list_entry;
-	amcs_monitor_list *monitors;
+	pvector *monitors;
 	amcs_monitor *monitor;
 	const char *sysname;
 
-
 	if ((udev = udev_new()) == NULL)
-		error(1, "Can not create udev object.");
-
+		error(1, "Can't create udev object.");
 	if ((udev_enum = udev_enumerate_new(udev)) == NULL )
-		error(1, "Can not create unumerate object");
+		error(1, "Can't create unumerate object");
 
 	udev_enumerate_add_match_subsystem(udev_enum, "drm");
 	udev_enumerate_scan_devices(udev_enum);
 
 	if ((udev_list = udev_enumerate_get_list_entry(udev_enum)) == NULL)
-		error(1, "Can not get dev list");
+		error(1, "Can't get dev list");
 
-	monitors = NULL;
+	monitors = xmalloc(sizeof(*monitors));
+	pvector_init(monitors, xrealloc);
 
 	udev_list_entry_foreach(udev_list_entry, udev_list) {
 		path = udev_list_entry_get_name(udev_list_entry);
@@ -58,24 +54,15 @@ amcs_udev_get_monitors(void)
 
 		if (status != NULL) {
 			monitor = xmalloc(sizeof (amcs_monitor));
-			monitor->next = monitors;
-			monitors = monitor;
-
 			sysname = udev_device_get_sysname(udev_dev);
-			monitor->name = xmalloc(strlen(sysname) + 1);
-			strcpy(monitor->name, sysname);
+			monitor->name = strdup(sysname);
 			monitor->status = 0;
-
 			if (STREQ(status, "connected"))
 				monitor->status = 1;
+			pvector_push(monitors, monitor);
 		}
-
 		udev_device_unref(udev_dev);
 	}
-
-	if (monitor_list == NULL)
-		monitor_list = monitors;
-
 	udev_enumerate_unref(udev_enum);
 	udev_unref(udev);
 
@@ -96,17 +83,17 @@ amcs_udev_get_cardnames(void)
 
 
 	if ((udev = udev_new()) == NULL)
-		error(1, "Can not create udev object.");
+		error(1, "Can't create udev object.");
 
 	if ((udev_enum = udev_enumerate_new(udev)) == NULL )
-		error(1, "Can not create unumerate object");
+		error(1, "Can't create unumerate object");
 
 	udev_enumerate_add_match_property(udev_enum, "DEVTYPE", "drm_minor");
 	udev_enumerate_add_match_sysname(udev_enum, "card[0-9]*");
 	udev_enumerate_scan_devices(udev_enum);
 
 	if ((udev_list = udev_enumerate_get_list_entry(udev_enum)) == NULL)
-		error(1, "Can not get dev list");
+		error(1, "Can't get dev list");
 
 	debug("Found cards:");
 	udev_list_entry_foreach(udev_list_entry, udev_list) {
@@ -137,7 +124,6 @@ amcs_udev_free_cardnames(const char **cards)
 {
 	int i;
 
-
 	for (i = 0; cards[i] != NULL; ++i)
 		free((char*)cards[i]);
 
@@ -147,29 +133,40 @@ amcs_udev_free_cardnames(const char **cards)
 static void
 send_changes(void)
 {
-	amcs_monitor_list *new_monitor_list;
-	amcs_monitor *new_monitor, *monitor;
+	int i, j;
 
-
-	new_monitor_list = new_monitor = amcs_udev_get_monitors();
-
-	for (; new_monitor != NULL; new_monitor = new_monitor->next) {
-		monitor = monitor_list;
-
-		for (; monitor != NULL; monitor = monitor->next) {
-			if (STREQ(monitor->name, new_monitor->name) &&
-			    monitor->status != new_monitor->status) {
-				monitor->status = new_monitor->status;
-				ext_update_status(monitor->name, monitor->status);
+	if (g_monitors == NULL) {
+		g_monitors = xmalloc(sizeof(*g_monitors));
+		pvector_init(g_monitors, xrealloc);
+	}
+	pvector *newmons = amcs_udev_get_monitors();
+	for (i = 0; i < pvector_len(g_monitors); i++) {
+		struct amcs_monitor *oldmon = pvector_get(g_monitors, i);
+		for (j = 0; j < pvector_len(newmons); j++) {
+			struct amcs_monitor *nmon = pvector_get(newmons, j);
+			if (STRNEQ(oldmon->name, nmon->name))
+				continue;
+			if (oldmon->status != nmon->status) {
+				oldmon->status = nmon->status;
+				ext_update_status(oldmon->name, oldmon->status);
 			}
+			free(nmon->name);
+			free(nmon);
+			pvector_set(newmons, j, NULL);
 		}
 	}
-
-	free(new_monitor_list->name);
-	free(new_monitor_list);
+	for (i = 0; i < pvector_len(newmons); i++) {
+		struct amcs_monitor *nmon = pvector_get(newmons, i);
+		if (nmon == NULL)
+			continue;
+		pvector_push(g_monitors, nmon);
+		ext_update_status(nmon->name, nmon->status);
+	}
+	pvector_free(newmons);
+	free(newmons);
 }
 
-static void*
+static void *
 monitor_tracking(void *args)
 {
 	int ret;
@@ -180,7 +177,7 @@ monitor_tracking(void *args)
 
 
 	if ((udev = udev_new()) == NULL)
-		error(1, "Can not create udev object.");
+		error(1, "Can't create udev object.");
 
 	udev_mon = udev_monitor_new_from_netlink(udev, "udev");
 

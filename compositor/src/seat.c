@@ -154,11 +154,6 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 	uint32_t state;
 	xkb_keysym_t keysym;
 
-	/* for debugging purposes only
-	if (ctx->isactive == false)
-		return 0;
-	*/
-
 	k = libinput_event_get_keyboard_event(ev);
 	time = libinput_event_keyboard_get_time(k);
 	key = libinput_event_keyboard_get_key(k);
@@ -232,14 +227,15 @@ update_capabilities(struct libinput_device *dev, int isAdd)
 	}
 }
 
-int
+static int
 notify_seat(int fd, uint32_t mask, void *data)
 {
 	struct amcs_compositor *ctx;
-	struct amcs_seat *seat = compositor_ctx.seat;
+	struct amcs_seat *seat;
 	struct libinput_event *ev = NULL;
 
 	ctx = (struct amcs_compositor *) data;
+	seat = ctx->seat;
 	debug("notify_seat triggered");
 	libinput_dispatch(seat->input);
 	while ((ev = libinput_get_event(seat->input)) != NULL) {
@@ -259,7 +255,8 @@ notify_seat(int fd, uint32_t mask, void *data)
 			update_capabilities(dev, 0);
 			break;
 		case LIBINPUT_EVENT_KEYBOARD_KEY:
-			process_keyboard_event(ctx, ev);
+			if (ctx->isactive)
+				process_keyboard_event(ctx, ev);
 			break;
 		case LIBINPUT_EVENT_POINTER_MOTION:
 			debug("mouse moved");
@@ -271,7 +268,6 @@ notify_seat(int fd, uint32_t mask, void *data)
 			debug("next input event %p, type = %d", ev, evtype);
 			break;
 		}
-
 		libinput_event_destroy(ev);
 	}
 	return 0;

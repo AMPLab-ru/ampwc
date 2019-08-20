@@ -3,6 +3,8 @@
 #include <wayland-server.h>
 #include <wayland-util.h>
 
+#include "orpc.h"
+#include "amcs_drm.h"
 #include "wl-server.h"
 #include "macro.h"
 #include "output.h"
@@ -31,7 +33,7 @@ amcs_output_screens_add(struct amcs_output *out, const char *path)
 
 	assert(out && path);
 
-	if ((card = amcs_drm_init(path)) == NULL) {
+	if ((card = amcs_drm_init(compositor_ctx.orpc, path)) == NULL) {
 		return 1;
 	}
 	pvector_push(&out->cards, card);
