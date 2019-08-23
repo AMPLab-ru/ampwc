@@ -173,7 +173,9 @@ surf_commit(struct wl_client *client, struct wl_resource *resource)
 	struct amcs_surface *mysurf;
 	struct wl_shm_buffer *buf;
 	void *data;
-	int x, y;
+	int x, y, w, h;
+	int bufsz, bh, bw;
+	int format;
 
 	mysurf = wl_resource_get_user_data(resource);
 	buf = mysurf->pending.buf;
@@ -182,45 +184,50 @@ surf_commit(struct wl_client *client, struct wl_resource *resource)
 		warning("nothing to commit, ignore request");
 		return;
 	}
+	if (!mysurf->aw) {
+		warning("window without surface!");
+		return;
+	}
 
 	x = mysurf->pending.x;
 	y = mysurf->pending.y;
+	w = mysurf->pending.w;
+	h = mysurf->pending.h;
 	wl_shm_buffer_begin_access(buf);
 	data = wl_shm_buffer_get_data(buf);
-	debug("data = %p", data);
-	if (mysurf->aw) {
-		int bufsz, h, w;
-		int format;
 
-		h = wl_shm_buffer_get_height(buf);
-		w = wl_shm_buffer_get_width(buf);
-		assert(x + mysurf->pending.w <= w);
-		assert(y + mysurf->pending.h <= h);
-		debug("try to commit buf, (x, y) (%d, %d), (w, h) (%d, %d)",
-		      x, y, w, h);
+	bh = wl_shm_buffer_get_height(buf);
+	bw = wl_shm_buffer_get_width(buf);
+	assert(x + w <= bw);
+	assert(y + h <= bh);
+	debug("try to commit buf, (x, y) (%d, %d), (w, h) (%d, %d)",
+	      x, y, bw, bh);
 
-		format = wl_shm_buffer_get_format(buf);
-		if (format != WL_SHM_FORMAT_ARGB8888 &&
-		    format != WL_SHM_FORMAT_XRGB8888) {
-			warning("unknown buffer format, ignore");
-			goto finalize;
-		}
-
-		bufsz = h * w * 4;
-		if (mysurf->aw->buf.sz < bufsz)
-			mysurf->aw->buf.dt = xrealloc(mysurf->aw->buf.dt, bufsz);
-		mysurf->aw->buf.sz = bufsz;
-		mysurf->aw->v_box.w = MIN(mysurf->pending.w, mysurf->w);
-		mysurf->aw->v_box.h = MIN(mysurf->pending.h, mysurf->h);
-		mysurf->aw->v_box.x = x;
-		mysurf->aw->v_box.y = y;
-
-		mysurf->aw->buf.h = h;
-		mysurf->aw->buf.w = w;
-
-		memcpy(mysurf->aw->buf.dt, data, bufsz);
-		amcs_win_commit(mysurf->aw);
+	format = wl_shm_buffer_get_format(buf);
+	if (format != WL_SHM_FORMAT_ARGB8888 &&
+	    format != WL_SHM_FORMAT_XRGB8888) {
+		warning("unknown buffer format, ignore");
+		goto finalize;
 	}
+
+	bufsz = bh * bw * 4;
+	if (mysurf->aw->buf.sz < bufsz)
+		mysurf->aw->buf.dt = xrealloc(mysurf->aw->buf.dt, bufsz);
+	if (w == 0 || w > mysurf->w)
+		w = mysurf->w;
+	if (h == 0 || h > mysurf->h)
+		h = mysurf->h;
+	mysurf->aw->buf.sz = bufsz;
+	mysurf->aw->v_box.w = MIN(mysurf->pending.w, mysurf->w);
+	mysurf->aw->v_box.h = MIN(mysurf->pending.h, mysurf->h);
+	mysurf->aw->v_box.x = x;
+	mysurf->aw->v_box.y = y;
+
+	mysurf->aw->buf.h = bh;
+	mysurf->aw->buf.w = bw;
+
+	memcpy(mysurf->aw->buf.dt, data, bufsz);
+	amcs_win_commit(mysurf->aw);
 	debug("data[0] = %x", ((uint8_t*)data)[0]);
 finalize:
 	wl_shm_buffer_end_access(buf);

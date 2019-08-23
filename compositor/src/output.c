@@ -148,8 +148,12 @@ amcs_output_update_region(struct amcs_output *out, struct amcs_win *win)
 
 	screen = pvector_get(&out->screens, 0);
 	//TODO: use additional screens
-	h = MIN(win->buf.h, win->v_box.h);
-	w = MIN(win->buf.w, win->v_box.w);
+	h = MIN(win->buf.h, win->h);
+	w = MIN(win->buf.w, win->w);
+	if (win->v_box.w != 0 && win->v_box.w < w)
+		w = win->v_box.w;
+	if (win->v_box.h != 0 && win->v_box.h < h)
+		h = win->v_box.h;
 	buf_off = win->v_box.y * win->buf.w;
 	for (i = 0; i < h; ++i) {
 		for (j = 0; j < w; ++j) {
