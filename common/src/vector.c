@@ -136,14 +136,14 @@ vector_add(vector *v, size_t idx, const void *val)
 	}
 
 	v->nmemb++;
-
-	if (v->nmemb > idx) {
+	if (v->nmemb - 1 > idx) {
 		memmove(v->data + (idx + 1) * v->size,
 			v->data + idx * v->size,
-			(v->nmemb - idx) * v->size);
+			(v->nmemb - idx - 1) * v->size);
 	}
 	#if 0
 	// same as above
+	int i;
 	for (i = idx; i < v->nmemb - 1; i++)
 		/* v[i] = v[i + 1] */
 		vector_set(v, i + 1, vector_get(v, i));

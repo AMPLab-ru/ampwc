@@ -47,7 +47,7 @@ int n_drm_fds;
 static int
 handle_file_open(struct amcs_orpc *ctx, char *buf, ssize_t bufsz)
 {
-	char iobuf[1];
+	char iobuf[1] = {'\0'};
 	struct iovec iov = {
 		.iov_base = iobuf,
 		.iov_len = sizeof(iobuf),

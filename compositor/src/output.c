@@ -40,7 +40,8 @@ amcs_output_screens_add(struct amcs_output *out, const char *path)
 	dev_list = card->list;
 
 	while (dev_list) {
-		screen = xmalloc(sizeof (*screen));
+		screen = xmalloc(sizeof(*screen));
+		memset(screen, 0, sizeof(*screen));
 		screen->w = dev_list->w;
 		screen->h = dev_list->h;
 		screen->pitch = dev_list->pitch;

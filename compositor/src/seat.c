@@ -255,7 +255,7 @@ notify_seat(int fd, uint32_t mask, void *data)
 			update_capabilities(dev, 0);
 			break;
 		case LIBINPUT_EVENT_KEYBOARD_KEY:
-			if (ctx->isactive)
+			//if (ctx->isactive)
 				process_keyboard_event(ctx, ev);
 			break;
 		case LIBINPUT_EVENT_POINTER_MOTION:

@@ -469,7 +469,7 @@ amcs_compositor_init(struct amcs_compositor *ctx)
 
 	memset(ctx, 0, sizeof(*ctx));
 
-	ctx->orpc = xmalloc(sizeof(ctx->orpc));
+	ctx->orpc = xmalloc(sizeof(*ctx->orpc));
 	if (!orpc_init(ctx->orpc))
 		error(1, "can't initialize orpc");
 
