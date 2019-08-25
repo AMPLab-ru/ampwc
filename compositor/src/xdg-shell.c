@@ -141,27 +141,26 @@ window_update_cb(struct amcs_win *win, void *opaq)
 	struct wl_array arr;
 
 	surf = opaq;
-	if (win->w == win->buf.w &&
-	    win->h == win->buf.h)
-		return 0;
+	if (win->w != win->buf.w ||
+	    win->h != win->buf.h) {
+		// Resize stuff
+		surf->w = win->w;
+		surf->h = win->h;
 
-	surf->w = win->w;
-	surf->h = win->h;
+		wl_array_init(&arr);
+		p = wl_array_add(&arr, sizeof(*p));
+		*p = XDG_TOPLEVEL_STATE_ACTIVATED;
+		p = wl_array_add(&arr, sizeof(*p));
+		*p = XDG_TOPLEVEL_STATE_MAXIMIZED;
 
-	wl_array_init(&arr);
-	p = wl_array_add(&arr, sizeof(*p));
-	*p = XDG_TOPLEVEL_STATE_ACTIVATED;
-	p = wl_array_add(&arr, sizeof(*p));
-	*p = XDG_TOPLEVEL_STATE_MAXIMIZED;
-
-	xdg_toplevel_send_configure(surf->xdgtopres, win->w, win->h, &arr);
-	serial = wl_display_next_serial(compositor_ctx.display);
-	surf->pending.xdg_serial = serial;
-	xdg_surface_send_configure(surf->xdgres, serial);
+		xdg_toplevel_send_configure(surf->xdgtopres, win->w, win->h, &arr);
+		wl_array_release(&arr);
+		serial = wl_display_next_serial(compositor_ctx.display);
+		surf->pending.xdg_serial = serial;
+		xdg_surface_send_configure(surf->xdgres, serial);
+	}
 	if (surf->redraw_cb)
 		wl_callback_send_done(surf->redraw_cb, get_time());
-
-	wl_array_release(&arr);
 	return 0;
 }
 

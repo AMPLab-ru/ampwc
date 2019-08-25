@@ -81,6 +81,7 @@ sig_surfaces_redraw(struct wl_listener *listener, void *data)
 	debug("");
 	ws = pvector_get(&ctx->workspaces, ctx->cur_workspace);
 	amcs_workspace_debug(ws);
+	amcs_workspace_update(ws);
 }
 
 static void

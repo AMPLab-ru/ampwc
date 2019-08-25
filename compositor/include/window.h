@@ -97,6 +97,7 @@ enum ws_lookup_dir {
 void amcs_workspace_focus_next(struct amcs_workspace *ws, enum ws_lookup_dir direction);
 void amcs_workspace_win_move(struct amcs_workspace *ws, enum ws_lookup_dir direction);
 void amcs_workspace_redraw(struct amcs_workspace *ws);
+void amcs_workspace_update(struct amcs_workspace *ws);
 void amcs_workspace_debug(struct amcs_workspace *ws);
 
 struct amcs_win *amcs_workspace_new_win(struct amcs_workspace *ws, void *opaq,

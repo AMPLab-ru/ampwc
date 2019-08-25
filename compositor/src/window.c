@@ -215,7 +215,8 @@ amcs_workspace_win_move(struct amcs_workspace *ws, enum ws_lookup_dir direction)
 void amcs_workspace_redraw(struct amcs_workspace *ws)
 {
 	assert(ws && ws->root && ws->out);
-	amcs_output_clear(ws->out);
+	if (amcs_container_nmemb(ws->root) == 0)
+		amcs_output_clear(ws->out);
 	amcs_container_resize_subwins(ws->root);
 }
 
@@ -526,6 +527,23 @@ _print_cb(struct amcs_win *w, void *opaq)
 	      "         w = %d h = %d", w->type == WT_WIN ? "wt_win" : "wt_wtree",
 			w->x, w->y, w->w, w->h);
 	return 0;
+}
+
+static int
+_upd_cb(struct amcs_win *w, void *opaq)
+{
+	if (w->type != WT_WIN)
+		return 0;
+	if (w->upd_cb)
+		return w->upd_cb(w, w->opaq);
+	return 0;
+}
+
+void
+amcs_workspace_update(struct amcs_workspace *ws)
+{
+
+	amcs_container_pass(ws->root, _upd_cb, NULL);
 }
 
 void
