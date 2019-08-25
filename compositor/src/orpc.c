@@ -185,6 +185,22 @@ orpc_run_stop()
 	//assert(0 && "HUIPIZDA, finalize it gracefully");
 }
 
+/* checks parent existance */
+static void
+alarm_handler(int signo)
+{
+	static pid_t pp = 0;
+
+	if (pp == 0)
+		pp = getppid();
+
+	if (kill(pp, 0) == 0)
+		return;
+
+	if (errno == ESRCH)
+		orpc_run_stop();
+}
+
 /*
  * Use root privileges for file access,
  * pass descriptors to parent
@@ -192,6 +208,7 @@ orpc_run_stop()
 static int
 orpc_run(struct amcs_orpc *ctx)
 {
+	struct sigaction act = {0};
 	struct pollfd fds[] = {
 		{ctx->fd,         POLLIN, 0},
 		{ctx->sigpipe[0], POLLIN, 0},
@@ -199,6 +216,11 @@ orpc_run(struct amcs_orpc *ctx)
 	char buf[16 + PATH_MAX] = {0};
 	ssize_t sz;
 	int rc;
+
+	act.sa_handler = alarm_handler;
+	if (sigaction(SIGALRM, &act, NULL) != 0)
+		error(1, "can't add SIGALRM handler");
+	alarm(1);
 
 	while (1) {
 		rc = poll(fds, ARRSZ(fds), -1);
@@ -216,6 +238,7 @@ orpc_run(struct amcs_orpc *ctx)
 			warning("descriptor error");
 			return 1;
 		}
+
 		if (fds[1].revents & POLLIN) {
 			sz = read(ctx->sigpipe[0], buf, sizeof(buf) - 1);
 			if (sz < 1) {
