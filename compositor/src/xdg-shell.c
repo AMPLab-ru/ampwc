@@ -141,8 +141,8 @@ window_update_cb(struct amcs_win *win, void *opaq)
 	struct wl_array arr;
 
 	surf = opaq;
-	if (win->w != win->buf.w ||
-	    win->h != win->buf.h) {
+	if (win->w != surf->w ||
+	    win->h != surf->h) {
 		// Resize stuff
 		surf->w = win->w;
 		surf->h = win->h;
