@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <sys/types.h>
@@ -12,6 +13,7 @@
 
 #include "xdg-shell-server.h"
 
+#include "utils.h"
 #include "common.h"
 #include "macro.h"
 #include "orpc.h"
@@ -19,9 +21,33 @@
 #include "wl-server.h"
 
 #define SEAT_NAME "seat0"
+
+struct xkb_rule_names DEFAULT_XKB_NAMES = {
+	.rules = NULL,
+	.model = NULL,
+	.layout = "us,ru",
+	.variant = NULL,
+	.options = NULL,
+};
+
 #define XKB_STATE(st) (st == LIBINPUT_KEY_STATE_RELEASED ? XKB_KEY_UP : XKB_KEY_DOWN)
 #define XKB_KEY(k) (k + 8)
 
+static int
+keymap_file_alloc(struct xkb_keymap *keymap, int *out_sz)
+{
+	char *s;
+	int fd;
+
+	s = xkb_keymap_get_as_string(keymap, XKB_KEYMAP_FORMAT_TEXT_V1);
+	assert(s && "xkb_keymap_get_as_string error");
+	*out_sz = strlen(s);
+	fd = alloc_tempfile(*out_sz);
+	write(fd, s, *out_sz);
+	free(s);
+
+	return fd;
+}
 
 static void
 pointer_set_cursor(struct wl_client *client, struct wl_resource *resource,
@@ -87,8 +113,10 @@ seat_new(struct amcs_compositor *ctx)
 
 	res->xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	assert(res->xkb && "can't initialize keyboard context");
-	res->keymap = xkb_keymap_new_from_names(res->xkb, NULL, 0);
+
+	res->keymap = xkb_keymap_new_from_names(res->xkb, &DEFAULT_XKB_NAMES, 0);
 	assert(res->keymap && "can't create keymap");
+	res->f_keymap = keymap_file_alloc(res->keymap, &res->f_keymap_sz);
 	res->kbstate = xkb_state_new(res->keymap);
 
 	return res;
@@ -130,6 +158,7 @@ ki_state_init(struct amcs_key_info *ki, struct amcs_seat *seat, uint32_t keysym,
 	ki->mods.depressed = xkb_state_serialize_mods(s, XKB_STATE_MODS_DEPRESSED);
 	ki->mods.latched = xkb_state_serialize_mods(s, XKB_STATE_MODS_LATCHED);
 	ki->mods.locked = xkb_state_serialize_mods(s, XKB_STATE_MODS_LOCKED);
+	ki->mods.group = xkb_state_serialize_group(s, XKB_STATE_LAYOUT_EFFECTIVE);
 	ki->keysym = keysym;
 	ki->state = state;
 	ki->modifiers = 0;
@@ -187,7 +216,7 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 
 	wl_keyboard_send_modifiers(client->keyboard,
 		wl_display_next_serial(ctx->display),
-		ki.mods.depressed, ki.mods.latched, ki.mods.locked, 0);
+		ki.mods.depressed, ki.mods.latched, ki.mods.locked, ki.mods.group);
 	wl_keyboard_send_key(client->keyboard,
 		wl_display_next_serial(ctx->display),
 		time, key, state);
@@ -195,7 +224,7 @@ process_keyboard_event(struct amcs_compositor *ctx, struct libinput_event *ev)
 	if (surf->redraw_cb)
 		wl_callback_send_done(surf->redraw_cb, get_time());
 
-	debug("send (time, key, state) (%d, %d, %d)", time, key, state);
+	debug("send (time, key, state, layout) (%d, %d, %d, %d)", time, key, state, ki.mods.group);
 	return 0;
 }
 
@@ -295,6 +324,7 @@ seat_get_keyboard(struct wl_client *client, struct wl_resource *resource,
 {
 	struct wl_resource *res;
 	struct amcs_client *c;
+	struct amcs_compositor *ctx = &compositor_ctx;
 
 	c = wl_resource_get_user_data(resource);
 
@@ -303,10 +333,12 @@ seat_get_keyboard(struct wl_client *client, struct wl_resource *resource,
 	wl_resource_set_implementation(res, &keyboard_interface, resource, NULL);
 	assert(c->keyboard == NULL && "keyboard not null");
 	c->keyboard = res;
-	wl_keyboard_send_keymap(res, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, 0, 0);
+	wl_keyboard_send_keymap(res, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,
+			ctx->seat->f_keymap,
+			ctx->seat->f_keymap_sz);
 	wl_keyboard_send_repeat_info(res, 200, 200);
 	wl_keyboard_send_modifiers(res,
-			wl_display_next_serial(compositor_ctx.display), 0, 0, 0, 0);
+			wl_display_next_serial(ctx->display), 0, 0, 0, 0);
 }
 
 static void
@@ -314,7 +346,6 @@ seat_get_touch(struct wl_client *client, struct wl_resource *resource,
 	uint32_t id)
 {
 	error(2, "not implemented");
-
 }
 
 static void
@@ -380,3 +411,22 @@ seat_finalize(struct amcs_compositor *ctx)
 	return 0;
 
 }
+
+int
+keyboard_layout_toggle(struct amcs_compositor *ctx)
+{
+	int n;
+	struct amcs_key_info ki = {0};
+	if (!ctx->seat)
+		return -1;
+
+	n = xkb_keymap_num_layouts(ctx->seat->keymap);
+
+	ki_state_init(&ki, ctx->seat, 0, 0);
+	assert(n && "OMG, no layouts :-(");
+	ki.mods.group = (ki.mods.group + 1) % n;
+	xkb_state_update_mask(ctx->seat->kbstate,
+		ki.mods.depressed, ki.mods.latched, ki.mods.locked, 0, 0, ki.mods.group);
+	return 0;
+}
+

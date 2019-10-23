@@ -142,9 +142,9 @@ shm_pool_init(struct client_ctx *ctx)
 {
 	int fd;
 
-	fd = tempfile();
-
-	posix_fallocate(fd, 0, POOL_SZ);
+	fd = alloc_tempfile(POOL_SZ);
+	if (fd < 0)
+		error(1, "can't get temp file");
 
 	ctx->data = mmap(NULL, POOL_SZ, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (ctx->data == NULL)

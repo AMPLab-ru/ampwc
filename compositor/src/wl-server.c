@@ -572,6 +572,12 @@ amcs_compositor_deinit(struct amcs_compositor *ctx)
 }
 
 static int
+_switch_layout(struct amcs_compositor *ctx, int key, void *opaq)
+{
+	return keyboard_layout_toggle(ctx);
+}
+
+static int
 _spawn_proc(struct amcs_compositor *ctx, int key, void *opaq)
 {
 	char *cmd[] = {(char *) opaq, NULL};
@@ -670,6 +676,9 @@ amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki
 		int (*handler)(struct amcs_compositor *ctx, int key, void *opaq);
 		void *opaq;
 	} handlers[] = {
+		{XKB_KEY_Meta_L, KB_ALT | KB_SHIFT, _switch_layout, NULL},
+		{XKB_KEY_Shift_L, KB_ALT | KB_SHIFT, _switch_layout, NULL},
+
 		{XKB_KEY_n, KB_WIN, _spawn_proc, "./wlclient"},
 		{XKB_KEY_q, KB_WIN | KB_SHIFT, _kill_client, NULL},
 		{XKB_KEY_s, KB_WIN, _split_window, NULL},
@@ -710,6 +719,7 @@ amcs_compositor_handle_key(struct amcs_compositor *ctx, struct amcs_key_info *ki
 		debug("modifiers match");
 		if (ki->state == WL_KEYBOARD_KEY_STATE_RELEASED)
 			return true;
+		debug("run handler");
 		handlers[i].handler(ctx, sym, handlers[i].opaq);
 		return true;
 	}

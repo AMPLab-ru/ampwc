@@ -15,9 +15,9 @@ or
     # WAYLAND_DEBUG=1 ./wlserv
     # WAYLAND_DISPLAY=wayland-0 WAYLAND_DEBUG=1 ./wlclient
 
-If you want run compositor as user, you should add SUID bit to server binary
+If you want run compositor as regular user, you should add SUID bit to server binary
     # chown root:root ./wlserv
-    # chmod a+s ./wlserv
+    # chmod a+xs ./wlserv
 
 Dependencies
 ------------

@@ -37,11 +37,17 @@ struct amcs_seat {
 	struct xkb_keymap *keymap;
 	struct xkb_state *kbstate;
 
+	// keymap, saved into anon file, useful for sending keymap to wayland clients
+	int f_keymap;
+	int f_keymap_sz;
+
 	int ifd;			// libinput file descriptor
 	int capabilities;
 };
 
 int seat_init(struct amcs_compositor *ctx);
 int seat_finalize(struct amcs_compositor *ctx);
+
+int keyboard_layout_toggle(struct amcs_compositor *ctx);
 
 #endif

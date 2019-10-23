@@ -532,6 +532,7 @@ _print_cb(struct amcs_win *w, void *opaq)
 static int
 _upd_cb(struct amcs_win *w, void *opaq)
 {
+	debug("");
 	if (w->type != WT_WIN)
 		return 0;
 	if (w->upd_cb)
@@ -542,7 +543,6 @@ _upd_cb(struct amcs_win *w, void *opaq)
 void
 amcs_workspace_update(struct amcs_workspace *ws)
 {
-
 	amcs_container_pass(ws->root, _upd_cb, NULL);
 }
 
