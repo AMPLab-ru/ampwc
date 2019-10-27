@@ -602,8 +602,9 @@ _kill_client(struct amcs_compositor *ctx, int key, void *opaq)
 
 	surf = amcs_win_get_opaq(w->current);
 	if (surf->xdgtopres) {
+		// just try to ask client kindly
 		xdg_toplevel_send_close(surf->xdgtopres);
-		wl_resource_destroy(surf->res);
+		//wl_resource_destroy(surf->res);
 	}
 	debug("");
 	return 0;
